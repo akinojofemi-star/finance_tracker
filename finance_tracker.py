@@ -79,12 +79,13 @@ def generate_sample_data():
     """Generates 50 rows of realistic personal finance data"""
     np.random.seed(42)
     end_date = datetime.now()
-    dates = [(end_date - timedelta(days=x)).strftime('%Y-%m-%d') for x in range(90)]
+    # Use raw python datetime objects to completely bypass any Pandas string parsing engine bugs on Streamlit Cloud
+    dates = [(end_date - timedelta(days=x)) for x in range(90)]
     
     data = []
     # Add regular Salary
     for m in range(3):
-        dt = (end_date.replace(day=1) - timedelta(days=m*30)).strftime('%Y-%m-%d')
+        dt = (end_date.replace(day=1) - timedelta(days=m*30))
         data.append([dt, 'Monthly Salary', 'Salary/Income', 450000.0, 'Bank Transfer'])
         
     # Generate random expenses
@@ -104,8 +105,8 @@ def generate_sample_data():
         data.append([dt, desc, cat, round(amt, 2), method])
         
     df = pd.DataFrame(data, columns=['Date', 'Description', 'Category', 'Amount', 'Payment_Method'])
-    # Explicitly define format and coerce errors to bypass strict Streamlit Cloud pandas constraints
-    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d', errors='coerce')
+    # Pandas will now natively accept the true python `datetime` objects without invoking C-level string parsers
+    df['Date'] = pd.to_datetime(df['Date'])
     df = df.dropna(subset=['Date'])
     return df.sort_values('Date', ascending=False).reset_index(drop=True)
 
