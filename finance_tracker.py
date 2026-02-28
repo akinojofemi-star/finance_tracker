@@ -104,7 +104,9 @@ def generate_sample_data():
         data.append([dt, desc, cat, round(amt, 2), method])
         
     df = pd.DataFrame(data, columns=['Date', 'Description', 'Category', 'Amount', 'Payment_Method'])
-    df['Date'] = pd.to_datetime(df['Date'])
+    # Explicitly define format and coerce errors to bypass strict Streamlit Cloud pandas constraints
+    df['Date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d', errors='coerce')
+    df = df.dropna(subset=['Date'])
     return df.sort_values('Date', ascending=False).reset_index(drop=True)
 
 def init_session_state():
