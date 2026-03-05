@@ -459,30 +459,6 @@ def main():
 <div class="onboarding-hero">
     <div class="onboarding-title">Getting Started</div>
     <div class="onboarding-subtitle">No transaction data is currently loaded. To view your dashboard, upload an existing dataset or start logging transactions manually.</div>
-    
-    <ul class="feature-list">
-        <li class="feature-item">
-            <div class="feature-number">1</div>
-            <div class="feature-text-block">
-                <div class="feature-title">Import historical data</div>
-                <div class="feature-desc">Use the sidebar to upload a CSV or Excel file containing your transaction history. The file must include Date, Description, Category, Amount, and Payment_Method columns.</div>
-            </div>
-        </li>
-        <li class="feature-item">
-            <div class="feature-number">2</div>
-            <div class="feature-text-block">
-                <div class="feature-title">Log records manually</div>
-                <div class="feature-desc">Expand the "Add New Transaction" form in the sidebar to enter single expenses or income items directly into the system.</div>
-            </div>
-        </li>
-        <li class="feature-item">
-            <div class="feature-number">3</div>
-            <div class="feature-text-block">
-                <div class="feature-title">Review analysis</div>
-                <div class="feature-desc">Once data is populated, this dashboard will automatically generate reporting on spending, net cash flow, and budget adherence.</div>
-            </div>
-        </li>
-    </ul>
 </div>
         """
         st.markdown(html_str, unsafe_allow_html=True)
