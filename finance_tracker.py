@@ -18,6 +18,7 @@ import plotly.graph_objects as go
 from datetime import datetime, date, timedelta
 import numpy as np
 import io
+import json
 
 try:
     from fpdf import FPDF
@@ -393,6 +394,29 @@ def reset_filter_state():
     for key in ["filter_period", "filter_date_range", "filter_categories", "filter_methods", "filter_types", "filter_search"]:
         if key in st.session_state:
             del st.session_state[key]
+
+def build_session_snapshot():
+    tx = st.session_state.transactions.copy()
+    if not tx.empty and 'Date' in tx.columns:
+        tx['Date'] = pd.to_datetime(tx['Date'], errors='coerce').dt.strftime('%Y-%m-%d')
+    payload = {
+        "version": 1,
+        "exported_at": datetime.now().isoformat(),
+        "transactions": tx.to_dict(orient='records'),
+        "budgets": st.session_state.budgets,
+        "goals": st.session_state.goals
+    }
+    return json.dumps(payload, ensure_ascii=True, indent=2).encode("utf-8")
+
+def load_session_snapshot(snapshot_bytes):
+    payload = json.loads(snapshot_bytes.decode("utf-8"))
+    tx = pd.DataFrame(payload.get("transactions", []))
+    if tx.empty:
+        tx = pd.DataFrame(columns=REQUIRED_COLS)
+    cleaned, issues = clean_transactions(tx)
+    set_transaction_state(cleaned, issues)
+    st.session_state.budgets = payload.get("budgets", {}) or {}
+    st.session_state.goals = payload.get("goals", {'Emergency Fund': {'target': 500000, 'saved': 250000}})
 
 def refresh_available_categories(df):
     """Use uploaded categories when available; otherwise fallback defaults."""
@@ -1020,6 +1044,50 @@ def main():
 
     with tab_transactions:
         st.markdown('<div class="section-card"><h3 style="margin:0;">Transactions & Export</h3></div>', unsafe_allow_html=True)
+
+        st.markdown("**Manage Transactions (Edit/Delete/Add)**")
+        editable_df = st.session_state.transactions.copy().sort_values('Date', ascending=False).reset_index(drop=True)
+        edited_df = st.data_editor(
+            editable_df,
+            use_container_width=True,
+            num_rows="dynamic",
+            height=280,
+            key="txn_editor",
+            column_config={
+                "Date": st.column_config.DateColumn("Date", format="YYYY-MM-DD"),
+                "Amount": st.column_config.NumberColumn("Amount", format="%.2f")
+            }
+        )
+        apply_l, apply_r = st.columns([1, 2])
+        with apply_l:
+            if st.button("Apply Table Changes", use_container_width=True):
+                try:
+                    cleaned, issues = clean_transactions(edited_df)
+                    set_transaction_state(cleaned, issues)
+                    st.success("Transactions updated.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Could not apply edits: {e}")
+
+        with st.expander("Session Backup (Save/Load)", expanded=False):
+            snapshot = build_session_snapshot()
+            st.download_button(
+                "Download Session Backup (JSON)",
+                data=snapshot,
+                file_name=f"finance_tracker_session_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+            backup_file = st.file_uploader("Load Session Backup", type=["json"], key="session_backup_uploader")
+            if backup_file is not None and st.button("Restore Backup", use_container_width=True):
+                try:
+                    load_session_snapshot(backup_file.read())
+                    st.success("Session restored.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Restore failed: {e}")
+
+        st.markdown("---")
         disp_df = df.sort_values('Date', ascending=False).copy()
         disp_df['Date'] = disp_df['Date'].dt.strftime('%Y-%m-%d')
         st.dataframe(
