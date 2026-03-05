@@ -288,6 +288,13 @@ CATEGORIES = [
 INCOME_CATS = ['Salary/Income', 'Freelance/Gifts']
 PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money', 'Bank Transfer']
 REQUIRED_COLS = ['Date', 'Description', 'Category', 'Amount', 'Payment_Method']
+COLUMN_ALIASES = {
+    'Date': ['date', 'transactiondate', 'txndate', 'entrydate', 'posteddate'],
+    'Description': ['description', 'details', 'narration', 'note', 'memo', 'item'],
+    'Category': ['category', 'expensecategory', 'type', 'group'],
+    'Amount': ['amount', 'value', 'transactionamount', 'amt'],
+    'Payment_Method': ['paymentmethod', 'payment_method', 'method', 'channel', 'paymentchannel', 'mode']
+}
 
 # --- Helper Functions ---
 def generate_sample_data():
@@ -358,14 +365,32 @@ def refresh_available_payment_methods(df):
         dynamic = sorted([m for m in df['Payment_Method'].dropna().astype(str).str.strip().unique().tolist() if m])
     st.session_state.available_payment_methods = dynamic if dynamic else PAYMENT_METHODS.copy()
 
+def _norm_col(col_name):
+    return ''.join(ch for ch in str(col_name).strip().lower() if ch.isalnum())
+
+def standardize_columns(df):
+    """Map common CSV/Excel header variants to required schema."""
+    renamed = df.copy()
+    existing = { _norm_col(c): c for c in renamed.columns }
+    rename_map = {}
+    for target, aliases in COLUMN_ALIASES.items():
+        for alias in aliases:
+            if alias in existing:
+                rename_map[existing[alias]] = target
+                break
+    if rename_map:
+        renamed = renamed.rename(columns=rename_map)
+    return renamed
+
 def clean_transactions(df):
     """Standardize incoming transaction data and report quality issues."""
     issues = {}
-    cleaned = df.copy()
+    cleaned = standardize_columns(df)
 
     missing_cols = [c for c in REQUIRED_COLS if c not in cleaned.columns]
     if missing_cols:
-        raise ValueError(f"Missing columns: {missing_cols}")
+        found = list(cleaned.columns)
+        raise ValueError(f"Missing columns: {missing_cols}. Found columns: {found}")
 
     cleaned = cleaned[REQUIRED_COLS].copy()
     cleaned['Date'] = pd.to_datetime(cleaned['Date'], errors='coerce')
