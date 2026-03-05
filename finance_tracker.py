@@ -181,30 +181,6 @@ st.markdown("""
     }
     .onboarding-title { font-size: 1.8rem; font-weight: 700; color: var(--ink); margin-bottom: 0.65rem; }
     .onboarding-subtitle { color: #495469; font-size: 1rem; max-width: 800px; line-height: 1.55; margin-bottom: 1.4rem; }
-    .feature-list { list-style-type: none; padding-left: 0; }
-    .feature-item {
-        display: flex;
-        align-items: flex-start;
-        margin-bottom: 1rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid #edf2f7;
-    }
-    .feature-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-    .feature-number {
-        font-weight: 700;
-        color: var(--brand);
-        background: var(--brand-soft);
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-right: 1rem;
-        flex-shrink: 0;
-    }
-    .feature-title { font-size: 1rem; font-weight: 650; color: var(--ink); margin-bottom: 0.2rem; }
-    .feature-desc { color: #5f6b81; font-size: 0.94rem; line-height: 1.45; }
 
     [data-testid="stDataFrame"] {
         border-radius: 12px;
@@ -221,6 +197,8 @@ st.markdown("""
     .stTabs [data-baseweb="tab-list"] {
         gap: 0.4rem;
         margin-bottom: 0.7rem;
+        overflow-x: auto;
+        flex-wrap: nowrap;
     }
     .stTabs [data-baseweb="tab"] {
         background: #eef4fb;
@@ -229,6 +207,7 @@ st.markdown("""
         color: #334155;
         padding: 0.35rem 0.7rem;
         font-weight: 600;
+        white-space: nowrap;
     }
     .stTabs [aria-selected="true"] {
         background: #0f4c81 !important;
@@ -292,7 +271,6 @@ st.markdown("""
         }
         .onboarding-title { font-size: 1.35rem; }
         .onboarding-subtitle { font-size: 0.92rem; }
-        .feature-desc { font-size: 0.89rem; }
         [data-testid="stDataFrame"] { border-radius: 10px; }
         .js-plotly-plot .plotly .modebar { display: none !important; }
     }
@@ -355,7 +333,7 @@ def generate_sample_data():
 def init_session_state():
     if 'transactions' not in st.session_state:
         # Initialize an empty dataframe with correct columns instead of sample data
-        st.session_state.transactions = pd.DataFrame(columns=['Date', 'Description', 'Category', 'Amount', 'Payment_Method'])
+        st.session_state.transactions = pd.DataFrame(columns=REQUIRED_COLS)
     if 'budgets' not in st.session_state:
         # Default monthly budgets (amount in NGN)
         st.session_state.budgets = {
@@ -370,6 +348,19 @@ def init_session_state():
         st.session_state.available_categories = CATEGORIES.copy()
     if 'available_payment_methods' not in st.session_state:
         st.session_state.available_payment_methods = PAYMENT_METHODS.copy()
+
+def set_transaction_state(df, issues=None):
+    """Single source of truth when replacing transaction state."""
+    st.session_state.transactions = df
+    st.session_state.data_issues = issues or {}
+    refresh_available_categories(df)
+    refresh_available_payment_methods(df)
+
+def reset_filter_state():
+    """Clear active sidebar filters."""
+    for key in ["filter_period", "filter_date_range", "filter_categories", "filter_methods", "filter_types", "filter_search"]:
+        if key in st.session_state:
+            del st.session_state[key]
 
 def refresh_available_categories(df):
     """Use uploaded categories when available; otherwise fallback defaults."""
@@ -492,6 +483,12 @@ def detect_unusual_expenses(df):
     outliers = expenses[expenses['Abs_Amount'] >= threshold].drop(columns=['Abs_Amount'])
     return outliers.sort_values('Amount')
 
+PLOTLY_CONFIG = {
+    "displayModeBar": False,
+    "responsive": True,
+    "scrollZoom": False
+}
+
 # --- PDF Generation ---
 def generate_basic_pdf(df, kpis):
     if not FPDF_AVAILABLE:
@@ -557,17 +554,11 @@ def main():
         with cta_l:
             if st.button("Load Sample", use_container_width=True):
                 sample_df, issues = clean_transactions(generate_sample_data())
-                st.session_state.transactions = sample_df
-                st.session_state.data_issues = issues
-                refresh_available_categories(sample_df)
-                refresh_available_payment_methods(sample_df)
+                set_transaction_state(sample_df, issues)
                 st.rerun()
         with cta_r:
             if st.button("Clear Data", use_container_width=True):
-                st.session_state.transactions = pd.DataFrame(columns=REQUIRED_COLS)
-                st.session_state.data_issues = {}
-                st.session_state.available_categories = CATEGORIES.copy()
-                st.session_state.available_payment_methods = PAYMENT_METHODS.copy()
+                set_transaction_state(pd.DataFrame(columns=REQUIRED_COLS), {})
                 st.rerun()
 
         uploaded_file = st.file_uploader("Upload data (CSV/Excel)", type=["csv", "xlsx"])
@@ -575,10 +566,7 @@ def main():
             try:
                 raw_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
                 cleaned, issues = clean_transactions(raw_df)
-                st.session_state.transactions = cleaned
-                st.session_state.data_issues = issues
-                refresh_available_categories(cleaned)
-                refresh_available_payment_methods(cleaned)
+                set_transaction_state(cleaned, issues)
                 st.success(f"Loaded {len(cleaned)} clean records.")
             except Exception as e:
                 st.error(f"Upload failed: {e}")
@@ -615,10 +603,7 @@ def main():
                         }])
                         merged = pd.concat([entry, st.session_state.transactions], ignore_index=True)
                         cleaned, issues = clean_transactions(merged)
-                        st.session_state.transactions = cleaned
-                        st.session_state.data_issues = issues
-                        refresh_available_categories(cleaned)
-                        refresh_available_payment_methods(cleaned)
+                        set_transaction_state(cleaned, issues)
                         st.success("Transaction added.")
 
         with st.expander("Budgets & Goals", expanded=False):
@@ -637,7 +622,13 @@ def main():
                 st.success("Goal updated.")
 
         st.markdown("---")
-        st.markdown("### Filters")
+        f_l, f_r = st.columns([2, 1])
+        with f_l:
+            st.markdown("### Filters")
+        with f_r:
+            if st.button("Reset", use_container_width=True):
+                reset_filter_state()
+                st.rerun()
         st.markdown('<div class="filter-caption">Tip: leave multi-selects empty to include everything.</div>', unsafe_allow_html=True)
         base_df = st.session_state.transactions.copy()
         if base_df.empty:
@@ -700,18 +691,20 @@ def main():
     curr_net, prev_net, net_delta = month_over_month_net(st.session_state.transactions)
     delta_color = "text-neutral" if net_delta >= 0 else "text-red"
 
-    m1, m2, m3, m4, m5 = st.columns(5)
-    with m1:
+    top_row = st.columns(3)
+    with top_row[0]:
         st.markdown(f'<div class="kpi-card"><div class="kpi-title">Income</div><div class="kpi-val">₦{kpis["income"]:,.0f}</div></div>', unsafe_allow_html=True)
-    with m2:
+    with top_row[1]:
         st.markdown(f'<div class="kpi-card"><div class="kpi-title">Expenses</div><div class="kpi-val">₦{abs(kpis["expense"]):,.0f}</div></div>', unsafe_allow_html=True)
-    with m3:
+    with top_row[2]:
         n_class = "text-neutral" if kpis["net"] >= 0 else "text-red"
         st.markdown(f'<div class="kpi-card"><div class="kpi-title">Net Savings</div><div class="kpi-val {n_class}">₦{kpis["net"]:,.0f}</div></div>', unsafe_allow_html=True)
-    with m4:
+
+    bottom_row = st.columns(2)
+    with bottom_row[0]:
         sr_class = "text-neutral" if kpis["savings_rate"] >= 0 else "text-red"
         st.markdown(f'<div class="kpi-card"><div class="kpi-title">Savings Rate</div><div class="kpi-val {sr_class}">{kpis["savings_rate"]:.1f}%</div></div>', unsafe_allow_html=True)
-    with m5:
+    with bottom_row[1]:
         st.markdown(f'<div class="kpi-card"><div class="kpi-title">Month-over-Month Net Delta</div><div class="kpi-val {delta_color}">₦{net_delta:,.0f}</div></div>', unsafe_allow_html=True)
 
     st.caption(
@@ -739,7 +732,7 @@ def main():
                 xaxis=dict(showgrid=False, linecolor="#dbe3ee", title="", tickformat="%b %d", tickangle=-25, automargin=True),
                 yaxis=dict(showgrid=True, gridcolor="#eaf0f6", linecolor="rgba(0,0,0,0)", title="")
             )
-            st.plotly_chart(fig1, use_container_width=True)
+            st.plotly_chart(fig1, use_container_width=True, config=PLOTLY_CONFIG)
 
             daily = (
                 df.sort_values('Date')
@@ -763,7 +756,7 @@ def main():
                 xaxis=dict(showgrid=False, title=""),
                 yaxis=dict(showgrid=True, gridcolor="#eaf0f6", title="")
             )
-            st.plotly_chart(fig_line, use_container_width=True)
+            st.plotly_chart(fig_line, use_container_width=True, config=PLOTLY_CONFIG)
 
         with c2:
             expenses_only = df[df['Amount'] < 0].copy()
@@ -792,7 +785,7 @@ def main():
                     font=dict(family="Avenir Next, Segoe UI, sans-serif", color="#475569", size=13),
                     title=dict(font=dict(size=16, color="#0f172a"))
                 )
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, use_container_width=True, config=PLOTLY_CONFIG)
             else:
                 st.info("No expense data to chart.")
 
