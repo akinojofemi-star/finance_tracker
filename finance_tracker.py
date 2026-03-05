@@ -198,6 +198,27 @@ st.markdown("""
     }
     .stProgress > div > div > div > div { background-color: #1d6aa8; }
     hr { border-color: var(--line); margin: 0.9rem 0; }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.4rem;
+        margin-bottom: 0.7rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background: #eef4fb;
+        border: 1px solid #d4e0ed;
+        border-radius: 9px;
+        color: #334155;
+        padding: 0.35rem 0.7rem;
+        font-weight: 600;
+    }
+    .stTabs [aria-selected="true"] {
+        background: #0f4c81 !important;
+        border-color: #0f4c81 !important;
+        color: #ffffff !important;
+    }
+    label, .stSelectbox label, .stMultiSelect label, .stSlider label, .stTextInput label {
+        color: #1f2937 !important;
+        font-weight: 600 !important;
+    }
 
     /* Responsive tuning for tablets and phones */
     @media (max-width: 1024px) {
@@ -630,12 +651,16 @@ def main():
             )
             st.plotly_chart(fig1, use_container_width=True)
 
-            daily = df.sort_values('Date').groupby(df['Date'].dt.date, as_index=False)['Amount'].sum()
-            daily['Date'] = pd.to_datetime(daily['Date'])
+            daily = (
+                df.sort_values('Date')
+                .assign(Day=df['Date'].dt.floor('D'))
+                .groupby('Day', as_index=False)['Amount']
+                .sum()
+            )
             daily['Balance'] = daily['Amount'].cumsum()
             fig_line = go.Figure()
             fig_line.add_trace(go.Scatter(
-                x=daily['Date'], y=daily['Balance'], mode='lines',
+                x=daily['Day'], y=daily['Balance'], mode='lines',
                 line=dict(color='#0e9f6e', width=2.4), name='Running Balance'
             ))
             fig_line.update_layout(
