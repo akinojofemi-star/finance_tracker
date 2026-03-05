@@ -286,6 +286,7 @@ CATEGORIES = [
 INCOME_CATS = ['Salary/Income', 'Freelance/Gifts']
 PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money', 'Bank Transfer']
 REQUIRED_COLS = ['Date', 'Description', 'Category', 'Amount', 'Payment_Method']
+MIN_REQUIRED_COLS = ['Date', 'Description', 'Category', 'Amount']
 COLUMN_ALIASES = {
     'Date': ['date', 'transactiondate', 'txndate', 'entrydate', 'posteddate'],
     'Description': ['description', 'details', 'narration', 'note', 'memo', 'item'],
@@ -293,6 +294,9 @@ COLUMN_ALIASES = {
     'Amount': ['amount', 'value', 'transactionamount', 'amt'],
     'Payment_Method': ['paymentmethod', 'payment_method', 'method', 'channel', 'paymentchannel', 'mode']
 }
+DEBIT_ALIASES = ['debit', 'withdrawal', 'outflow', 'moneyout']
+CREDIT_ALIASES = ['credit', 'deposit', 'inflow', 'moneyin']
+TYPE_ALIASES = ['type', 'transactiontype', 'entrytype', 'drcr']
 
 # --- Helper Functions ---
 def generate_sample_data():
@@ -379,6 +383,132 @@ def refresh_available_payment_methods(df):
 def _norm_col(col_name):
     return ''.join(ch for ch in str(col_name).strip().lower() if ch.isalnum())
 
+def _parse_numeric_series(series):
+    return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace(' ', '', regex=False), errors='coerce')
+
+def _best_column_by_parse(df, parser_fn, min_ratio=0.6, excluded=None):
+    excluded = excluded or set()
+    best_col, best_ratio = None, -1.0
+    for col in df.columns:
+        if col in excluded:
+            continue
+        parsed = parser_fn(df[col])
+        ratio = parsed.notna().mean() if len(parsed) else 0
+        if ratio > best_ratio:
+            best_col, best_ratio = col, ratio
+    return best_col if best_ratio >= min_ratio else None
+
+def infer_schema(df):
+    """Infer required finance columns from arbitrary tabular exports."""
+    renamed = standardize_columns(df)
+    norm_to_original = {_norm_col(c): c for c in renamed.columns}
+    result = pd.DataFrame(index=renamed.index)
+    used = set()
+
+    # Date
+    date_col = 'Date' if 'Date' in renamed.columns else _best_column_by_parse(renamed, lambda s: pd.to_datetime(s, errors='coerce'))
+    if date_col:
+        result['Date'] = pd.to_datetime(renamed[date_col], errors='coerce')
+        used.add(date_col)
+
+    # Amount (single column or credit-debit computation)
+    amount_col = 'Amount' if 'Amount' in renamed.columns else None
+    if not amount_col:
+        amount_col = _best_column_by_parse(renamed, _parse_numeric_series, excluded=used)
+
+    debit_col = next((norm_to_original[a] for a in DEBIT_ALIASES if a in norm_to_original), None)
+    credit_col = next((norm_to_original[a] for a in CREDIT_ALIASES if a in norm_to_original), None)
+
+    if amount_col:
+        result['Amount'] = _parse_numeric_series(renamed[amount_col])
+        used.add(amount_col)
+    elif debit_col or credit_col:
+        debit_vals = _parse_numeric_series(renamed[debit_col]) if debit_col else pd.Series(0, index=renamed.index, dtype='float64')
+        credit_vals = _parse_numeric_series(renamed[credit_col]) if credit_col else pd.Series(0, index=renamed.index, dtype='float64')
+        result['Amount'] = credit_vals.fillna(0) - debit_vals.fillna(0)
+        if debit_col:
+            used.add(debit_col)
+        if credit_col:
+            used.add(credit_col)
+
+    # Description (prefer explicit description; then merchant/payee; then best text column)
+    if 'Description' in renamed.columns:
+        desc_col = 'Description'
+    else:
+        desc_candidates = ['merchant', 'payee', 'beneficiary', 'narration', 'details', 'memo', 'note']
+        desc_col = next((norm_to_original[c] for c in desc_candidates if c in norm_to_original), None)
+        if not desc_col:
+            text_cols = [c for c in renamed.columns if c not in used and renamed[c].dtype == object]
+            desc_col = max(text_cols, key=lambda c: renamed[c].astype(str).str.len().mean(), default=None)
+    if desc_col:
+        result['Description'] = renamed[desc_col]
+        used.add(desc_col)
+
+    # Category (optional fallback)
+    if 'Category' in renamed.columns:
+        result['Category'] = renamed['Category']
+        used.add('Category')
+    else:
+        cat_candidates = ['category', 'type', 'tags', 'tag', 'group']
+        cat_col = next((norm_to_original[c] for c in cat_candidates if c in norm_to_original and norm_to_original[c] not in used), None)
+        if cat_col:
+            result['Category'] = renamed[cat_col]
+            used.add(cat_col)
+        else:
+            result['Category'] = 'Miscellaneous'
+
+    # Payment method (optional fallback)
+    if 'Payment_Method' in renamed.columns:
+        result['Payment_Method'] = renamed['Payment_Method']
+        used.add('Payment_Method')
+    else:
+        pm_candidates = ['paymentmethod', 'method', 'channel', 'mode', 'source']
+        pm_col = next((norm_to_original[c] for c in pm_candidates if c in norm_to_original and norm_to_original[c] not in used), None)
+        if pm_col:
+            result['Payment_Method'] = renamed[pm_col]
+            used.add(pm_col)
+        else:
+            result['Payment_Method'] = 'Unspecified'
+
+    # Sign normalization when amount is mostly positive but a type column indicates direction.
+    type_col = next((norm_to_original[a] for a in TYPE_ALIASES if a in norm_to_original), None)
+    if type_col and 'Amount' in result.columns:
+        tvals = renamed[type_col].astype(str).str.lower().str.strip()
+        is_expense = tvals.str.contains('debit|expense|withdraw|dr|out', regex=True, na=False)
+        is_income = tvals.str.contains('credit|income|deposit|cr|in', regex=True, na=False)
+        if result['Amount'].dropna().ge(0).mean() > 0.95:
+            signed = result['Amount'].copy()
+            signed.loc[is_expense] = -signed.loc[is_expense].abs()
+            signed.loc[is_income] = signed.loc[is_income].abs()
+            result['Amount'] = signed
+
+    return result
+
+def load_any_uploaded_table(uploaded_file):
+    """Read CSV/Excel and return the best candidate table with inferred schema."""
+    candidates = []
+    if uploaded_file.name.endswith('.csv'):
+        candidates.append(pd.read_csv(uploaded_file))
+    else:
+        sheets = pd.read_excel(uploaded_file, sheet_name=None)
+        candidates.extend([df for df in sheets.values() if isinstance(df, pd.DataFrame) and not df.empty])
+
+    if not candidates:
+        raise ValueError("No readable tabular data found in file.")
+
+    scored = []
+    for raw in candidates:
+        inferred = infer_schema(raw)
+        score = 0
+        for col in MIN_REQUIRED_COLS:
+            if col in inferred.columns:
+                non_null_ratio = inferred[col].notna().mean() if len(inferred) else 0
+                score += non_null_ratio
+        scored.append((score, inferred))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return scored[0][1]
+
 def standardize_columns(df):
     """Map common CSV/Excel header variants to required schema."""
     renamed = df.copy()
@@ -398,10 +528,14 @@ def clean_transactions(df):
     issues = {}
     cleaned = standardize_columns(df)
 
-    missing_cols = [c for c in REQUIRED_COLS if c not in cleaned.columns]
+    missing_cols = [c for c in MIN_REQUIRED_COLS if c not in cleaned.columns]
     if missing_cols:
         found = list(cleaned.columns)
         raise ValueError(f"Missing columns: {missing_cols}. Found columns: {found}")
+
+    # Some bank exports do not include payment method; keep app schema stable.
+    if 'Payment_Method' not in cleaned.columns:
+        cleaned['Payment_Method'] = 'Unspecified'
 
     cleaned = cleaned[REQUIRED_COLS].copy()
     cleaned['Date'] = pd.to_datetime(cleaned['Date'], errors='coerce')
@@ -564,7 +698,7 @@ def main():
         uploaded_file = st.file_uploader("Upload data (CSV/Excel)", type=["csv", "xlsx"])
         if uploaded_file:
             try:
-                raw_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+                raw_df = load_any_uploaded_table(uploaded_file)
                 cleaned, issues = clean_transactions(raw_df)
                 set_transaction_state(cleaned, issues)
                 st.success(f"Loaded {len(cleaned)} clean records.")
