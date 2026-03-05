@@ -332,9 +332,16 @@ COLUMN_ALIASES = {
     'Amount': ['amount', 'value', 'transactionamount', 'amt'],
     'Payment_Method': ['paymentmethod', 'payment_method', 'method', 'channel', 'paymentchannel', 'mode']
 }
-DEBIT_ALIASES = ['debit', 'withdrawal', 'outflow', 'moneyout']
-CREDIT_ALIASES = ['credit', 'deposit', 'inflow', 'moneyin']
-TYPE_ALIASES = ['type', 'transactiontype', 'entrytype', 'drcr']
+DEBIT_ALIASES = [
+    'debit', 'debits', 'dbit', 'dr', 'dramount', 'withdrawal', 'withdrawals',
+    'outflow', 'moneyout', 'paidout', 'charges'
+]
+CREDIT_ALIASES = [
+    'credit', 'credits', 'crdit', 'cr', 'cramount', 'deposit', 'deposits',
+    'inflow', 'moneyin', 'paidin', 'receipt'
+]
+TYPE_ALIASES = ['type', 'transactiontype', 'entrytype', 'drcr', 'txntype', 'trxtype', 'direction']
+BALANCE_ALIASES = ['balance', 'balanceafter', 'runningbalance', 'availablebalance', 'ledgerbalance', 'closingbalance']
 
 # --- Helper Functions ---
 def generate_sample_data():
@@ -473,6 +480,86 @@ def _best_column_by_parse(df, parser_fn, min_ratio=0.6, excluded=None):
             best_col, best_ratio = col, ratio
     return best_col if best_ratio >= min_ratio else None
 
+def _find_first_matching_col(norm_to_original, aliases, used=None):
+    used = used or set()
+    for alias in aliases:
+        if alias in norm_to_original:
+            col = norm_to_original[alias]
+            if col not in used:
+                return col
+    return None
+
+def _signed_by_context(result, renamed, norm_to_original):
+    """
+    Improve sign inference when statements store amounts as unsigned values.
+    Uses type/debit-credit/balance-delta/description hints with weighted voting.
+    """
+    if 'Amount' not in result.columns:
+        return result
+
+    amt = result['Amount'].copy()
+    has_vals = amt.notna()
+    if not has_vals.any():
+        return result
+
+    # Only intervene aggressively if most values are non-negative (common export pattern).
+    mostly_unsigned = (amt[has_vals] >= 0).mean() >= 0.9
+    if not mostly_unsigned:
+        return result
+
+    votes = pd.Series(0, index=result.index, dtype='int64')
+
+    # 1) Type column hints
+    type_col = _find_first_matching_col(norm_to_original, TYPE_ALIASES)
+    if type_col:
+        tvals = renamed[type_col].astype(str).str.lower().str.strip()
+        is_exp = tvals.str.contains(r'debit|expense|withdraw|withdrawal|dr|out', regex=True, na=False)
+        is_inc = tvals.str.contains(r'credit|income|deposit|cr|in', regex=True, na=False)
+        votes.loc[is_exp] -= 3
+        votes.loc[is_inc] += 3
+
+    # 2) Debit/Credit row hints (when those columns exist even if Amount was selected)
+    debit_col = _find_first_matching_col(norm_to_original, DEBIT_ALIASES)
+    credit_col = _find_first_matching_col(norm_to_original, CREDIT_ALIASES)
+    if debit_col:
+        dvals = _parse_numeric_series(renamed[debit_col]).fillna(0)
+        votes.loc[dvals > 0] -= 3
+    if credit_col:
+        cvals = _parse_numeric_series(renamed[credit_col]).fillna(0)
+        votes.loc[cvals > 0] += 3
+
+    # 3) Description/category semantic hints
+    desc = result.get('Description', pd.Series('', index=result.index)).astype(str).str.lower()
+    cat = result.get('Category', pd.Series('', index=result.index)).astype(str).str.lower()
+    text = (desc + " " + cat).str.strip()
+    expense_pat = r'purchase|pos|atm|charge|bill|payment|transfer out|debit|withdraw|fee|subscription|rent|airtime'
+    income_pat = r'salary|interest|refund|reversal|cashback|transfer in|credit|deposit|income'
+    votes.loc[text.str.contains(expense_pat, regex=True, na=False)] -= 1
+    votes.loc[text.str.contains(income_pat, regex=True, na=False)] += 1
+
+    # 4) Balance delta hints
+    bal_col = _find_first_matching_col(norm_to_original, BALANCE_ALIASES)
+    if bal_col:
+        bal = _parse_numeric_series(renamed[bal_col])
+        tmp = pd.DataFrame({
+            'idx': result.index,
+            'Date': result['Date'] if 'Date' in result.columns else pd.NaT,
+            'bal': bal
+        }).dropna(subset=['bal'])
+        if not tmp.empty:
+            sort_cols = ['Date', 'idx'] if 'Date' in result.columns else ['idx']
+            tmp = tmp.sort_values(sort_cols)
+            tmp['delta'] = tmp['bal'].diff()
+            delta_map = tmp.set_index('idx')['delta']
+            votes.loc[delta_map[delta_map < 0].index] -= 1
+            votes.loc[delta_map[delta_map > 0].index] += 1
+
+    signed = amt.copy()
+    signed.loc[votes < 0] = -signed.loc[votes < 0].abs()
+    signed.loc[votes > 0] = signed.loc[votes > 0].abs()
+    result['Amount'] = signed
+    return result
+
 def infer_schema(df):
     """Infer required finance columns from arbitrary tabular exports."""
     renamed = standardize_columns(df)
@@ -491,8 +578,8 @@ def infer_schema(df):
     if not amount_col:
         amount_col = _best_column_by_parse(renamed, _parse_numeric_series, excluded=used)
 
-    debit_col = next((norm_to_original[a] for a in DEBIT_ALIASES if a in norm_to_original), None)
-    credit_col = next((norm_to_original[a] for a in CREDIT_ALIASES if a in norm_to_original), None)
+    debit_col = _find_first_matching_col(norm_to_original, DEBIT_ALIASES)
+    credit_col = _find_first_matching_col(norm_to_original, CREDIT_ALIASES)
 
     if amount_col:
         result['Amount'] = _parse_numeric_series(renamed[amount_col])
@@ -545,19 +632,7 @@ def infer_schema(df):
         else:
             result['Payment_Method'] = 'Unspecified'
 
-    # Sign normalization when amount is mostly positive but a type column indicates direction.
-    type_col = next((norm_to_original[a] for a in TYPE_ALIASES if a in norm_to_original), None)
-    if type_col and 'Amount' in result.columns:
-        tvals = renamed[type_col].astype(str).str.lower().str.strip()
-        is_expense = tvals.str.contains('debit|expense|withdraw|dr|out', regex=True, na=False)
-        is_income = tvals.str.contains('credit|income|deposit|cr|in', regex=True, na=False)
-        if result['Amount'].dropna().ge(0).mean() > 0.95:
-            signed = result['Amount'].copy()
-            signed.loc[is_expense] = -signed.loc[is_expense].abs()
-            signed.loc[is_income] = signed.loc[is_income].abs()
-            result['Amount'] = signed
-
-    return result
+    return _signed_by_context(result, renamed, norm_to_original)
 
 def _looks_like_header_row(values):
     if not values:
