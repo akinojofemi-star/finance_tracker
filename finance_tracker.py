@@ -37,15 +37,15 @@ st.set_page_config(
 st.markdown("""
 <style>
     :root {
-        --bg: #f3f7fb;
-        --panel: #ffffff;
+        --bg: #edf5f4;
+        --panel: #f7f2e8;
         --ink: #0f172a;
         --muted: #5b6578;
-        --line: #dbe3ee;
-        --brand: #0f4c81;
-        --brand-soft: #e9f1f8;
-        --ok: #0e9f6e;
-        --warn: #d97706;
+        --line: #c8d2dc;
+        --brand: #5b6c8f;
+        --brand-soft: #d7e7e8;
+        --ok: #7fb3b5;
+        --warn: #c2a57a;
         --bad: #dc2626;
     }
 
@@ -73,7 +73,7 @@ st.markdown("""
     header {visibility: hidden;}
 
     .dashboard-hero {
-        background: linear-gradient(135deg, #0f4c81 0%, #1d6aa8 60%, #2e7cb7 100%);
+        background: linear-gradient(135deg, #5b6c8f 0%, #6f82a6 55%, #8fb8bf 100%);
         color: #ffffff;
         border-radius: 16px;
         padding: 1.4rem 1.5rem;
@@ -142,7 +142,7 @@ st.markdown("""
     }
     .stButton > button:hover, .stDownloadButton > button:hover {
         border-color: #7ea4c3;
-        color: #0f4c81;
+        color: #5b6c8f;
         background: #f8fbff;
     }
 
@@ -159,9 +159,9 @@ st.markdown("""
         border-radius: 10px !important;
     }
     [data-testid="stSidebar"] div[data-baseweb="tag"] {
-        background: #e8f2fb !important;
-        border: 1px solid #c7ddf2 !important;
-        color: #0f4c81 !important;
+        background: #dfe9f2 !important;
+        border: 1px solid #b9c7d8 !important;
+        color: #5b6c8f !important;
     }
     .filter-caption {
         color: #5f6b81;
@@ -192,7 +192,7 @@ st.markdown("""
         background-color: #f9fbfe !important;
         border-right: 1px solid #d8e3ef;
     }
-    .stProgress > div > div > div > div { background-color: #1d6aa8; }
+    .stProgress > div > div > div > div { background-color: #5b6c8f; }
     hr { border-color: var(--line); margin: 0.9rem 0; }
     .stTabs [data-baseweb="tab-list"] {
         gap: 0.4rem;
@@ -210,8 +210,8 @@ st.markdown("""
         white-space: nowrap;
     }
     .stTabs [aria-selected="true"] {
-        background: #0f4c81 !important;
-        border-color: #0f4c81 !important;
+        background: #5b6c8f !important;
+        border-color: #5b6c8f !important;
         color: #ffffff !important;
     }
     label, .stSelectbox label, .stMultiSelect label, .stSlider label, .stTextInput label {
@@ -857,7 +857,7 @@ def main():
         with c1:
             flow = df.groupby(df['Date'].dt.to_period('W'))['Amount'].sum().reset_index()
             flow['Date'] = flow['Date'].dt.start_time
-            flow['Color'] = np.where(flow['Amount'] < 0, '#d97706', '#0f4c81')
+            flow['Color'] = np.where(flow['Amount'] < 0, '#c2a57a', '#5b6c8f')
             fig1 = px.bar(flow, x='Date', y='Amount', title='Weekly Cash Flow Trend', color='Color', color_discrete_map='identity')
             fig1.update_layout(
                 margin=dict(l=20, r=20, t=50, b=20),
@@ -881,7 +881,7 @@ def main():
             fig_line = go.Figure()
             fig_line.add_trace(go.Scatter(
                 x=daily['Day'], y=daily['Balance'], mode='lines',
-                line=dict(color='#0e9f6e', width=2.4), name='Running Balance'
+                line=dict(color='#7fb3b5', width=2.4), name='Running Balance'
             ))
             fig_line.update_layout(
                 title="Running Net Balance",
@@ -908,7 +908,7 @@ def main():
                     expense_summary = top_exp
                 fig2 = px.pie(
                     expense_summary, values='Abs_Amount', names='Category', hole=0.66, title='Expense Allocation',
-                    color_discrete_sequence=['#0f4c81', '#2c6ca3', '#4e8ab9', '#0e9f6e', '#d97706', '#94a3b8']
+                    color_discrete_sequence=['#5b6c8f', '#7f8fac', '#8fb8bf', '#a8d5d7', '#c2a57a', '#b7bec8']
                 )
                 fig2.update_traces(textposition='inside', textinfo='none', hoverinfo='label+percent',
                                    marker=dict(line=dict(color='#ffffff', width=1.5)))
