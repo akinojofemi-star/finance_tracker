@@ -149,6 +149,26 @@ st.markdown("""
     .stTextInput input, .stNumberInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div {
         border-radius: 10px !important;
     }
+    [data-testid="stSidebar"] .stTextInput input,
+    [data-testid="stSidebar"] .stDateInput input,
+    [data-testid="stSidebar"] .stNumberInput input,
+    [data-testid="stSidebar"] div[data-baseweb="select"] > div {
+        background: #ffffff !important;
+        color: #1f2937 !important;
+        border: 1px solid #c9d8e8 !important;
+        border-radius: 10px !important;
+    }
+    [data-testid="stSidebar"] div[data-baseweb="tag"] {
+        background: #e8f2fb !important;
+        border: 1px solid #c7ddf2 !important;
+        color: #0f4c81 !important;
+    }
+    .filter-caption {
+        color: #5f6b81;
+        font-size: 0.82rem;
+        margin-top: -0.2rem;
+        margin-bottom: 0.45rem;
+    }
 
     .onboarding-hero {
         text-align: left;
@@ -618,18 +638,19 @@ def main():
 
         st.markdown("---")
         st.markdown("### Filters")
+        st.markdown('<div class="filter-caption">Tip: leave multi-selects empty to include everything.</div>', unsafe_allow_html=True)
         base_df = st.session_state.transactions.copy()
         if base_df.empty:
             min_date, max_date = date.today(), date.today()
         else:
             min_date, max_date = base_df['Date'].min().date(), base_df['Date'].max().date()
 
-        period_preset = st.selectbox("Time Window", ["Custom", "This Month", "Last 30 Days", "Year to Date", "All Time"], index=4)
-        date_range = st.date_input("Date Range", [min_date, max_date], disabled=(period_preset != "Custom"))
+        period_preset = st.selectbox("Time Window", ["Custom", "This Month", "Last 30 Days", "Year to Date", "All Time"], index=4, key="filter_period")
+        date_range = st.date_input("Date Range", [min_date, max_date], disabled=(period_preset != "Custom"), key="filter_date_range")
         category_filters = st.session_state.available_categories
-        cats_filter = st.multiselect("Categories", category_filters, default=category_filters)
+        cats_filter = st.multiselect("Categories", category_filters, default=[], placeholder="All categories", key="filter_categories")
         payment_filters = st.session_state.available_payment_methods
-        methods_filter = st.multiselect("Payment Methods", payment_filters, default=payment_filters)
+        methods_filter = st.multiselect("Payment Methods", payment_filters, default=[], placeholder="All methods", key="filter_methods")
         txn_type_options = []
         if not base_df.empty and (base_df['Amount'] > 0).any():
             txn_type_options.append("Income")
@@ -637,11 +658,11 @@ def main():
             txn_type_options.append("Expense")
         if not txn_type_options:
             txn_type_options = ["Income", "Expense"]
-        txn_types = st.multiselect("Transaction Type", txn_type_options, default=txn_type_options)
-        search_q = st.text_input("Search Description", placeholder="e.g. Uber, rent, salary")
+        txn_types = st.multiselect("Transaction Type", txn_type_options, default=[], placeholder="All types", key="filter_types")
+        search_q = st.text_input("Search Description", placeholder="e.g. Uber, rent, salary", key="filter_search")
         amt_floor = float(base_df['Amount'].min()) if not base_df.empty else -500000.0
         amt_ceil = float(base_df['Amount'].max()) if not base_df.empty else 500000.0
-        amount_range = st.slider("Amount Range (₦)", min_value=amt_floor, max_value=amt_ceil, value=(amt_floor, amt_ceil))
+        amount_range = st.slider("Amount Range (₦)", min_value=amt_floor, max_value=amt_ceil, value=(amt_floor, amt_ceil), key="filter_amount_range")
 
     df = st.session_state.transactions.copy()
     refresh_available_categories(df)
@@ -660,12 +681,17 @@ def main():
     else:
         start_d, end_d = period_bounds(period_preset, min_date, max_date)
     df = df[(df['Date'] >= start_d) & (df['Date'] <= end_d)]
-    df = df[df['Category'].isin(cats_filter)]
-    df = df[df['Payment_Method'].isin(methods_filter)]
-    if "Income" not in txn_types:
-        df = df[df['Amount'] < 0]
-    if "Expense" not in txn_types:
-        df = df[df['Amount'] > 0]
+    if cats_filter:
+        df = df[df['Category'].isin(cats_filter)]
+    if methods_filter:
+        df = df[df['Payment_Method'].isin(methods_filter)]
+    if txn_types:
+        if "Income" in txn_types and "Expense" not in txn_types:
+            df = df[df['Amount'] > 0]
+        elif "Expense" in txn_types and "Income" not in txn_types:
+            df = df[df['Amount'] < 0]
+        elif "Income" not in txn_types and "Expense" not in txn_types:
+            df = df.iloc[0:0]
     if search_q.strip():
         df = df[df['Description'].str.contains(search_q.strip(), case=False, na=False)]
     df = df[(df['Amount'] >= amount_range[0]) & (df['Amount'] <= amount_range[1])]
@@ -690,9 +716,12 @@ def main():
         sr_class = "text-neutral" if kpis["savings_rate"] >= 0 else "text-red"
         st.markdown(f'<div class="kpi-card"><div class="kpi-title">Savings Rate</div><div class="kpi-val {sr_class}">{kpis["savings_rate"]:.1f}%</div></div>', unsafe_allow_html=True)
     with m5:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-title">MoM Net Change</div><div class="kpi-val {delta_color}">₦{net_delta:,.0f}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-card"><div class="kpi-title">Month-over-Month Net Delta</div><div class="kpi-val {delta_color}">₦{net_delta:,.0f}</div></div>', unsafe_allow_html=True)
 
-    st.caption(f"Current month net: ₦{curr_net:,.0f}  |  Previous month net: ₦{prev_net:,.0f}")
+    st.caption(
+        f"Month-over-month net delta = (current month net cash flow) - (previous month net cash flow). "
+        f"Current: ₦{curr_net:,.0f} | Previous: ₦{prev_net:,.0f}"
+    )
 
     tab_overview, tab_insights, tab_transactions = st.tabs(["Overview", "Insights", "Transactions & Export"])
 
