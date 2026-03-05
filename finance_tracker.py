@@ -33,94 +33,228 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Minimalist UI/UX CSS ---
+# --- Refined UI/UX CSS ---
 st.markdown("""
 <style>
-    /* Global Theme */
-    .stApp { 
-        background-color: #FAFAFA;
+    :root {
+        --bg: #f3f7fb;
+        --panel: #ffffff;
+        --ink: #0f172a;
+        --muted: #5b6578;
+        --line: #dbe3ee;
+        --brand: #0f4c81;
+        --brand-soft: #e9f1f8;
+        --ok: #0e9f6e;
+        --warn: #d97706;
+        --bad: #dc2626;
     }
-    
-    h1, h2, h3, h4, h5, h6, p, span, div { 
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important; 
+
+    .stApp {
+        background:
+            radial-gradient(1200px 500px at 5% -10%, #d9e9f7 0%, rgba(217,233,247,0) 60%),
+            radial-gradient(900px 500px at 95% -20%, #e9f3e7 0%, rgba(233,243,231,0) 60%),
+            var(--bg);
+        color: var(--ink);
     }
-    
-    h1, h2, h3 { color: #111827 !important; letter-spacing: -0.02em; font-weight: 700; }
-    
-    /* Layout Adjustments */
-    .block-container { padding-top: 0rem !important; max-width: 1200px; }
-    
-    /* Hide Streamlit Watermarks */
+
+    h1, h2, h3, h4, h5, h6, p, span, div {
+        font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
+    }
+    h1, h2, h3 { color: var(--ink) !important; letter-spacing: -0.02em; }
+
+    .block-container {
+        max-width: 1240px;
+        padding-top: 0.5rem !important;
+        padding-bottom: 2rem !important;
+    }
+
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    /* Minimalist KPI Cards */
-    .kpi-card {
-        background: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        border-radius: 8px;
-        padding: 20px;
-        margin-bottom: 24px;
-        transition: border-color 0.2s ease;
-    }
-    .kpi-card:hover { border-color: #D1D5DB; }
-    .kpi-title { color: #6B7280; font-size: 0.875rem; font-weight: 500; margin-bottom: 8px;}
-    .kpi-val { color: #111827; font-size: 2rem; font-weight: 600; line-height: 1.2; letter-spacing: -0.02em;}
-    
-    /* Subtle Utility Classes */
-    .text-green { color: #059669; }
-    .text-red { color: #DC2626; }
-    .text-neutral { color: #111827; }
 
-    /* Button Polish */
-    .stButton>button {
-        border-radius: 6px; font-weight: 500;
-        border: 1px solid #D1D5DB;
-        background: #FFFFFF;
-        color: #374151;
-        transition: all 0.15s ease-in-out;
-        padding: 0.5rem 1rem;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    .dashboard-hero {
+        background: linear-gradient(135deg, #0f4c81 0%, #1d6aa8 60%, #2e7cb7 100%);
+        color: #ffffff;
+        border-radius: 16px;
+        padding: 1.4rem 1.5rem;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(255,255,255,0.15);
+        box-shadow: 0 10px 24px rgba(15, 76, 129, 0.22);
     }
-    .stButton>button:hover { 
-        border-color: #9CA3AF;
-        background: #F9FAFB;
-        color: #111827;
+    .hero-title { margin: 0; font-size: 1.85rem; font-weight: 700; color: #ffffff !important; }
+    .hero-subtitle { margin: 0.35rem 0 0; color: #e3eef8; font-size: 0.98rem; }
+    .hero-right { text-align: right; }
+    .hero-kicker { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #d6e8f8; }
+    .hero-period { font-size: 0.95rem; font-weight: 600; margin-top: 0.15rem; }
+    .hero-content {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 1rem;
     }
-    
-    /* Clean Empty State */
+
+    .section-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 0.9rem 1rem;
+        margin-bottom: 0.8rem;
+        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+    }
+
+    .kpi-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 1rem 1rem 1.1rem;
+        margin-bottom: 0.8rem;
+        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .kpi-card:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 9px 22px rgba(15, 23, 42, 0.08);
+    }
+    .kpi-title {
+        color: var(--muted);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    .kpi-val {
+        color: var(--ink);
+        font-size: 1.65rem;
+        font-weight: 700;
+        line-height: 1.2;
+    }
+    .text-red { color: var(--bad); }
+    .text-neutral { color: var(--ink); }
+
+    .stButton > button, .stDownloadButton > button {
+        border-radius: 10px;
+        border: 1px solid #b7c7d8;
+        background: #ffffff;
+        color: #1f2937;
+        font-weight: 600;
+        transition: all 0.15s ease;
+    }
+    .stButton > button:hover, .stDownloadButton > button:hover {
+        border-color: #7ea4c3;
+        color: #0f4c81;
+        background: #f8fbff;
+    }
+
+    .stTextInput input, .stNumberInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div {
+        border-radius: 10px !important;
+    }
+
     .onboarding-hero {
         text-align: left;
-        padding: 3rem 2.5rem;
-        margin-bottom: 1.5rem;
-        background: #FFFFFF;
-        border-radius: 8px;
-        border: 1px solid #E5E7EB;
+        padding: 2.2rem 2rem;
+        margin-bottom: 1.2rem;
+        background: var(--panel);
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
     }
-    .onboarding-title { font-size: 2rem; font-weight: 700; color: #111827; margin-bottom: 0.75rem; }
-    .onboarding-subtitle { color: #4B5563; font-size: 1.1rem; max-width: 800px; line-height: 1.5; font-weight: 400; margin-bottom: 2rem; }
-    
+    .onboarding-title { font-size: 1.8rem; font-weight: 700; color: var(--ink); margin-bottom: 0.65rem; }
+    .onboarding-subtitle { color: #495469; font-size: 1rem; max-width: 800px; line-height: 1.55; margin-bottom: 1.4rem; }
     .feature-list { list-style-type: none; padding-left: 0; }
-    .feature-item { 
-        display: flex; align-items: flex-start; margin-bottom: 1.5rem; 
-        padding-bottom: 1.5rem; border-bottom: 1px solid #F3F4F6;
+    .feature-item {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #edf2f7;
     }
     .feature-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-    .feature-number { 
-        font-weight: 600; color: #111827; background: #F3F4F6; width: 32px; height: 32px; 
-        border-radius: 50%; display: flex; align-items: center; justify-content: center; 
-        margin-right: 1.25rem; flex-shrink: 0;
+    .feature-number {
+        font-weight: 700;
+        color: var(--brand);
+        background: var(--brand-soft);
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 1rem;
+        flex-shrink: 0;
     }
-    .feature-text-block { flex-grow: 1; }
-    .feature-title { font-size: 1.1rem; font-weight: 600; color: #111827; margin-bottom: 0.25rem; }
-    .feature-desc { color: #6B7280; font-size: 0.95rem; line-height: 1.5; }
-    
-    /* Table & UI Polish */
-    [data-testid="stDataFrame"] { border-radius: 8px; overflow: hidden; border: 1px solid #E5E7EB; }
-    [data-testid="stSidebar"] { background-color: #FFFFFF !important; border-right: 1px solid #E5E7EB; }
-    .stProgress .st-bo { background-color: #4B5563; }
-    hr { border-color: #E5E7EB; }
+    .feature-title { font-size: 1rem; font-weight: 650; color: var(--ink); margin-bottom: 0.2rem; }
+    .feature-desc { color: #5f6b81; font-size: 0.94rem; line-height: 1.45; }
+
+    [data-testid="stDataFrame"] {
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+    }
+    [data-testid="stSidebar"] {
+        background-color: #f9fbfe !important;
+        border-right: 1px solid #d8e3ef;
+    }
+    .stProgress > div > div > div > div { background-color: #1d6aa8; }
+    hr { border-color: var(--line); margin: 0.9rem 0; }
+
+    /* Responsive tuning for tablets and phones */
+    @media (max-width: 1024px) {
+        .block-container {
+            padding-top: 0.35rem !important;
+            padding-left: 1rem !important;
+            padding-right: 1rem !important;
+        }
+        .dashboard-hero {
+            padding: 1.1rem 1rem;
+            border-radius: 14px;
+        }
+        .hero-title { font-size: 1.55rem; }
+        .hero-subtitle { font-size: 0.92rem; }
+        .kpi-val { font-size: 1.45rem; }
+        .section-card { padding: 0.75rem 0.85rem; }
+    }
+
+    @media (max-width: 768px) {
+        .block-container {
+            max-width: 100%;
+            padding-left: 0.75rem !important;
+            padding-right: 0.75rem !important;
+            padding-bottom: 1.25rem !important;
+        }
+        .dashboard-hero {
+            margin-bottom: 0.75rem;
+            box-shadow: 0 8px 18px rgba(15, 76, 129, 0.2);
+        }
+        .hero-content {
+            flex-direction: column;
+            gap: 0.65rem;
+        }
+        .hero-right { text-align: left; }
+        .hero-kicker { font-size: 0.66rem; }
+        .hero-period { font-size: 0.9rem; }
+        .kpi-card {
+            padding: 0.82rem 0.85rem 0.9rem;
+            margin-bottom: 0.65rem;
+            border-radius: 12px;
+        }
+        .kpi-title { font-size: 0.7rem; margin-bottom: 0.4rem; }
+        .kpi-val { font-size: 1.25rem; }
+        .section-card {
+            border-radius: 12px;
+            margin-bottom: 0.6rem;
+        }
+        .onboarding-hero {
+            padding: 1.35rem 1.05rem;
+            border-radius: 12px;
+        }
+        .onboarding-title { font-size: 1.35rem; }
+        .onboarding-subtitle { font-size: 0.92rem; }
+        .feature-desc { font-size: 0.89rem; }
+        [data-testid="stDataFrame"] { border-radius: 10px; }
+        .js-plotly-plot .plotly .modebar { display: none !important; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -229,14 +363,16 @@ def main():
     # Header
     current_month_str = datetime.now().strftime('%B %Y')
     st.markdown(f"""
-        <div style="display: flex; justify-content: space-between; align-items: top; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #E5E7EB;">
-            <div>
-                <h1 style="margin:0; font-size: 1.8rem; font-weight: 700; letter-spacing: -0.02em;">Finance Tracker</h1>
-                <p style="margin: 0; color: #6B7280; font-size: 0.95rem; margin-top: 4px;">Overview and Insights</p>
-            </div>
-            <div style="text-align: right;">
-                <span style="color: #6B7280; font-size: 0.85rem; font-weight: 500; text-transform: uppercase;">Reporting Period</span><br>
-                <span style="color: #111827; font-size: 0.95rem; font-weight: 600;">{current_month_str}</span>
+        <div class="dashboard-hero">
+            <div class="hero-content">
+                <div>
+                    <h1 class="hero-title">Finance Tracker</h1>
+                    <p class="hero-subtitle">Operational overview of income, expenses, budgets, and savings goals.</p>
+                </div>
+                <div class="hero-right">
+                    <div class="hero-kicker">Reporting Period</div>
+                    <div class="hero-period">{current_month_str}</div>
+                </div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -373,7 +509,7 @@ def main():
         st.markdown(f'<div class="kpi-card"><div class="kpi-title">Income Spent Ratio</div><div class="kpi-val {r_class}">{ratio*100:.1f}%</div></div>', unsafe_allow_html=True)
 
     # --- Charts & Analysis ---
-    st.markdown("### Cash Flow & Spending")
+    st.markdown('<div class="section-card"><h3 style="margin:0 0 0.6rem 0;">Cash Flow & Spending</h3></div>', unsafe_allow_html=True)
     c1, c2 = st.columns([1.5, 1])
     
     with c1:
@@ -382,7 +518,7 @@ def main():
         flow['Date'] = flow['Date'].dt.start_time
         
         # Monochrome / Muted color scheme for tracking
-        flow['Color'] = np.where(flow['Amount'] < 0, '#9CA3AF', '#4B5563')
+        flow['Color'] = np.where(flow['Amount'] < 0, '#d97706', '#0f4c81')
         
         fig1 = px.bar(flow, x='Date', y='Amount', title='Weekly Cash Flow Trend',
                       color='Color', color_discrete_map='identity')
@@ -391,10 +527,11 @@ def main():
             margin=dict(l=20, r=20, t=50, b=20), 
             plot_bgcolor='rgba(0,0,0,0)', 
             paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif", color="#4B5563", size=13),
-            title=dict(font=dict(size=16, color="#111827", weight="normal")),
-            xaxis=dict(showgrid=False, linecolor="#E5E7EB", title=""),
-            yaxis=dict(showgrid=True, gridcolor="#F3F4F6", linecolor="rgba(0,0,0,0)", title="")
+            height=320,
+            font=dict(family="Avenir Next, Segoe UI, sans-serif", color="#475569", size=13),
+            title=dict(font=dict(size=16, color="#0f172a")),
+            xaxis=dict(showgrid=False, linecolor="#dbe3ee", title="", tickformat="%b %d", tickangle=-25, automargin=True),
+            yaxis=dict(showgrid=True, gridcolor="#eaf0f6", linecolor="rgba(0,0,0,0)", title="")
         )
         st.plotly_chart(fig1, use_container_width=True)
 
@@ -403,11 +540,18 @@ def main():
         expenses_only = df[df['Amount'] < 0].copy()
         if not expenses_only.empty:
             expenses_only['Abs_Amount'] = expenses_only['Amount'].abs()
+            expense_summary = expenses_only.groupby('Category', as_index=False)['Abs_Amount'].sum().sort_values('Abs_Amount', ascending=False)
+            if len(expense_summary) > 6:
+                top_exp = expense_summary.head(5).copy()
+                others_amt = expense_summary.iloc[5:]['Abs_Amount'].sum()
+                if others_amt > 0:
+                    top_exp = pd.concat([top_exp, pd.DataFrame([{'Category': 'Others', 'Abs_Amount': others_amt}])], ignore_index=True)
+                expense_summary = top_exp
             
             # Corporate/Muted palette
-            slate_palette = ['#4B5563', '#6B7280', '#9CA3AF', '#D1D5DB', '#374151', '#1F2937']
+            slate_palette = ['#0f4c81', '#2c6ca3', '#4e8ab9', '#0e9f6e', '#d97706', '#94a3b8']
             
-            fig2 = px.pie(expenses_only, values='Abs_Amount', names='Category', hole=0.7,
+            fig2 = px.pie(expense_summary, values='Abs_Amount', names='Category', hole=0.66,
                           title='Expense Allocation', 
                           color_discrete_sequence=slate_palette)
             
@@ -419,13 +563,17 @@ def main():
             )
             
             fig2.update_layout(
-                margin=dict(l=20, r=20, t=50, b=20), 
+                margin=dict(l=15, r=15, t=50, b=70), 
+                height=340,
                 showlegend=True,
-                legend=dict(orientation="v", yanchor="auto", y=0.5, xanchor="right", x=1.3, font=dict(size=11)),
+                legend=dict(
+                    orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5,
+                    font=dict(size=10), itemclick="toggleothers"
+                ),
                 plot_bgcolor='rgba(0,0,0,0)', 
                 paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif", color="#4B5563", size=13),
-                title=dict(font=dict(size=16, color="#111827", weight="normal"))
+                font=dict(family="Avenir Next, Segoe UI, sans-serif", color="#475569", size=13),
+                title=dict(font=dict(size=16, color="#0f172a"))
             )
             st.plotly_chart(fig2, use_container_width=True)
         else:
@@ -433,7 +581,7 @@ def main():
 
     # --- Budgeting & Goals ---
     st.markdown("---")
-    st.markdown("### Monthly Tracking")
+    st.markdown('<div class="section-card"><h3 style="margin:0;">Monthly Tracking</h3></div>', unsafe_allow_html=True)
     c_b, c_g = st.columns(2)
     
     with c_b:
@@ -450,7 +598,6 @@ def main():
             p_col, t_col = st.columns([3, 1])
             with p_col:
                 st.markdown(f"**{cat}** (₦{spent:,.0f} / ₦{budget:,.0f})")
-                color = "normal" if pct < 85 else "excpetion" # Note: Streamlit uses primary/normal. Progress color styling is limited but bar reflects completion
                 st.progress(int(pct))
             with t_col:
                 if pct > 99:
@@ -482,7 +629,7 @@ def main():
             
     # --- Transaction Table ---
     st.markdown("---")
-    st.markdown("### Transaction Registry")
+    st.markdown('<div class="section-card"><h3 style="margin:0;">Transaction Registry</h3></div>', unsafe_allow_html=True)
     
     # Format for display
     disp_df = df.copy()
@@ -520,7 +667,7 @@ def main():
 
     # Footer
     st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #9CA3AF; font-size: 13px;'>Finance Tracker • All data is processed securely in your browser session.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #64748b; font-size: 13px;'>Finance Tracker • Data stays in this Streamlit session unless you export it.</p>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
