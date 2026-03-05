@@ -660,9 +660,6 @@ def main():
             txn_type_options = ["Income", "Expense"]
         txn_types = st.multiselect("Transaction Type", txn_type_options, default=[], placeholder="All types", key="filter_types")
         search_q = st.text_input("Search Description", placeholder="e.g. Uber, rent, salary", key="filter_search")
-        amt_floor = float(base_df['Amount'].min()) if not base_df.empty else -500000.0
-        amt_ceil = float(base_df['Amount'].max()) if not base_df.empty else 500000.0
-        amount_range = st.slider("Amount Range (₦)", min_value=amt_floor, max_value=amt_ceil, value=(amt_floor, amt_ceil), key="filter_amount_range")
 
     df = st.session_state.transactions.copy()
     refresh_available_categories(df)
@@ -694,7 +691,6 @@ def main():
             df = df.iloc[0:0]
     if search_q.strip():
         df = df[df['Description'].str.contains(search_q.strip(), case=False, na=False)]
-    df = df[(df['Amount'] >= amount_range[0]) & (df['Amount'] <= amount_range[1])]
 
     if df.empty:
         st.warning("No records match the active filters. Broaden your filters to continue.")
