@@ -266,6 +266,7 @@ CATEGORIES = [
 ]
 INCOME_CATS = ['Salary/Income', 'Freelance/Gifts']
 PAYMENT_METHODS = ['Cash', 'Card', 'Mobile Money', 'Bank Transfer']
+REQUIRED_COLS = ['Date', 'Description', 'Category', 'Amount', 'Payment_Method']
 
 # --- Helper Functions ---
 def generate_sample_data():
@@ -315,6 +316,97 @@ def init_session_state():
         }
     if 'goals' not in st.session_state:
         st.session_state.goals = {'Emergency Fund': {'target': 500000, 'saved': 250000}}
+    if 'data_issues' not in st.session_state:
+        st.session_state.data_issues = {}
+
+def clean_transactions(df):
+    """Standardize incoming transaction data and report quality issues."""
+    issues = {}
+    cleaned = df.copy()
+
+    missing_cols = [c for c in REQUIRED_COLS if c not in cleaned.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns: {missing_cols}")
+
+    cleaned = cleaned[REQUIRED_COLS].copy()
+    cleaned['Date'] = pd.to_datetime(cleaned['Date'], errors='coerce')
+    cleaned['Amount'] = pd.to_numeric(cleaned['Amount'], errors='coerce')
+    cleaned['Description'] = cleaned['Description'].fillna('').astype(str).str.strip()
+    cleaned['Category'] = cleaned['Category'].fillna('Miscellaneous').astype(str).str.strip()
+    cleaned['Payment_Method'] = cleaned['Payment_Method'].fillna('Cash').astype(str).str.strip()
+
+    issues['invalid_dates'] = int(cleaned['Date'].isna().sum())
+    issues['invalid_amounts'] = int(cleaned['Amount'].isna().sum())
+    issues['blank_descriptions'] = int((cleaned['Description'] == '').sum())
+    issues['zero_amounts'] = int((cleaned['Amount'] == 0).sum())
+    issues['future_dates'] = int((cleaned['Date'] > pd.Timestamp.today().normalize()).sum())
+
+    cleaned['Description'] = cleaned['Description'].replace('', 'No description')
+    cleaned.loc[~cleaned['Category'].isin(CATEGORIES), 'Category'] = 'Miscellaneous'
+    cleaned.loc[~cleaned['Payment_Method'].isin(PAYMENT_METHODS), 'Payment_Method'] = 'Cash'
+
+    cleaned = cleaned.dropna(subset=['Date', 'Amount'])
+    cleaned = cleaned[cleaned['Amount'] != 0]
+
+    return cleaned.sort_values('Date', ascending=False).reset_index(drop=True), issues
+
+def period_bounds(preset, min_date, max_date):
+    today = pd.Timestamp.today().normalize()
+    if preset == "This Month":
+        start = today.replace(day=1)
+        end = today
+    elif preset == "Last 30 Days":
+        start = today - pd.Timedelta(days=29)
+        end = today
+    elif preset == "Year to Date":
+        start = today.replace(month=1, day=1)
+        end = today
+    elif preset == "All Time":
+        start = pd.Timestamp(min_date)
+        end = pd.Timestamp(max_date)
+    else:
+        start = pd.Timestamp(min_date)
+        end = pd.Timestamp(max_date)
+    return start, end
+
+def compute_kpis(df):
+    income = df.loc[df['Amount'] > 0, 'Amount'].sum()
+    expenses = df.loc[df['Amount'] < 0, 'Amount'].sum()
+    net = income + expenses
+    savings_rate = (net / income * 100) if income > 0 else 0
+
+    days_active = max(df['Date'].dt.date.nunique(), 1)
+    avg_daily_spend = abs(expenses) / days_active
+    largest_expense = abs(df.loc[df['Amount'] < 0, 'Amount'].min()) if (df['Amount'] < 0).any() else 0
+
+    return {
+        'income': income,
+        'expense': expenses,
+        'net': net,
+        'savings_rate': savings_rate,
+        'avg_daily_spend': avg_daily_spend,
+        'largest_expense': largest_expense,
+        'days_active': days_active
+    }
+
+def month_over_month_net(df):
+    month_start = pd.Timestamp.today().normalize().replace(day=1)
+    prev_start = (month_start - pd.Timedelta(days=1)).replace(day=1)
+    prev_end = month_start - pd.Timedelta(days=1)
+
+    curr = df[(df['Date'] >= month_start)]['Amount'].sum()
+    prev = df[(df['Date'] >= prev_start) & (df['Date'] <= prev_end)]['Amount'].sum()
+    delta = curr - prev
+    return curr, prev, delta
+
+def detect_unusual_expenses(df):
+    expenses = df[df['Amount'] < 0].copy()
+    if len(expenses) < 8:
+        return pd.DataFrame(columns=df.columns)
+    expenses['Abs_Amount'] = expenses['Amount'].abs()
+    threshold = expenses['Abs_Amount'].mean() + (2 * expenses['Abs_Amount'].std(ddof=0))
+    outliers = expenses[expenses['Abs_Amount'] >= threshold].drop(columns=['Abs_Amount'])
+    return outliers.sort_values('Amount')
 
 # --- PDF Generation ---
 def generate_basic_pdf(df, kpis):
@@ -359,15 +451,13 @@ def generate_basic_pdf(df, kpis):
 # --- Main App ---
 def main():
     init_session_state()
-    
-    # Header
     current_month_str = datetime.now().strftime('%B %Y')
     st.markdown(f"""
         <div class="dashboard-hero">
             <div class="hero-content">
                 <div>
                     <h1 class="hero-title">Finance Tracker</h1>
-                    <p class="hero-subtitle">Operational overview of income, expenses, budgets, and savings goals.</p>
+                    <p class="hero-subtitle">Sharper finance operations: clean data, stronger controls, and richer insights.</p>
                 </div>
                 <div class="hero-right">
                     <div class="hero-kicker">Reporting Period</div>
@@ -377,271 +467,309 @@ def main():
         </div>
     """, unsafe_allow_html=True)
 
-    # --- Sidebar ---
     with st.sidebar:
         st.markdown("### Controls")
-        
-        # File Upload overriding
-        uploaded_file = st.file_uploader("Upload your data (CSV/Excel)", type=["csv", "xlsx"])
+        cta_l, cta_r = st.columns(2)
+        with cta_l:
+            if st.button("Load Sample", use_container_width=True):
+                sample_df, issues = clean_transactions(generate_sample_data())
+                st.session_state.transactions = sample_df
+                st.session_state.data_issues = issues
+                st.rerun()
+        with cta_r:
+            if st.button("Clear Data", use_container_width=True):
+                st.session_state.transactions = pd.DataFrame(columns=REQUIRED_COLS)
+                st.session_state.data_issues = {}
+                st.rerun()
+
+        uploaded_file = st.file_uploader("Upload data (CSV/Excel)", type=["csv", "xlsx"])
         if uploaded_file:
             try:
-                if uploaded_file.name.endswith('.csv'):
-                    new_df = pd.read_csv(uploaded_file)
-                else:
-                    new_df = pd.read_excel(uploaded_file)
-                
-                req_cols = ['Date', 'Description', 'Category', 'Amount', 'Payment_Method']
-                if all(c in new_df.columns for c in req_cols):
-                    new_df['Date'] = pd.to_datetime(new_df['Date'], errors='coerce')
-                    st.session_state.transactions = new_df.dropna(subset=['Date'])
-                    st.success("Custom data loaded!")
-                else:
-                    st.error(f"Missing columns. Expected: {req_cols}")
+                raw_df = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+                cleaned, issues = clean_transactions(raw_df)
+                st.session_state.transactions = cleaned
+                st.session_state.data_issues = issues
+                st.success(f"Loaded {len(cleaned)} clean records.")
             except Exception as e:
                 st.error(f"Upload failed: {e}")
-                
+
+        issues = st.session_state.data_issues
+        if issues:
+            flagged = {k: v for k, v in issues.items() if v > 0}
+            if flagged:
+                issue_text = ", ".join([f"{k.replace('_', ' ')}: {v}" for k, v in flagged.items()])
+                st.caption(f"Data quality checks: {issue_text}")
+
         st.markdown("---")
-        
-        # New Transaction Manual Form
         with st.expander("Add New Transaction", expanded=False):
             with st.form("new_txn_form", clear_on_submit=True):
                 t_date = st.date_input("Date", date.today())
-                t_desc = st.text_input("Description", placeholder="E.g., MTN Data")
+                t_desc = st.text_input("Description", placeholder="E.g., Electricity token")
                 t_cat = st.selectbox("Category", CATEGORIES)
+                default_expense = t_cat not in INCOME_CATS
                 t_amt = st.number_input("Amount (₦)", min_value=0.0, step=100.0)
-                is_expense = st.checkbox("This is an expense", value=True)
+                is_expense = st.checkbox("Mark as expense", value=default_expense)
                 t_method = st.selectbox("Payment Method", PAYMENT_METHODS)
-                
                 if st.form_submit_button("Save Transaction"):
-                    if t_amt > 0 and t_desc:
-                        final_amt = -t_amt if is_expense else t_amt
-                        new_row = pd.DataFrame([{
+                    if t_amt <= 0 or not t_desc.strip():
+                        st.error("Amount must be above zero and description is required.")
+                    else:
+                        entry = pd.DataFrame([{
                             'Date': pd.to_datetime(t_date),
-                            'Description': t_desc,
+                            'Description': t_desc.strip(),
                             'Category': t_cat,
-                            'Amount': final_amt,
+                            'Amount': -t_amt if is_expense else t_amt,
                             'Payment_Method': t_method
                         }])
-                        st.session_state.transactions = pd.concat([new_row, st.session_state.transactions], ignore_index=True)
-                        st.success("Transaction added!")
-                    else:
-                        st.error("Amount must be > 0 and description is required.")
-        
+                        merged = pd.concat([entry, st.session_state.transactions], ignore_index=True)
+                        cleaned, issues = clean_transactions(merged)
+                        st.session_state.transactions = cleaned
+                        st.session_state.data_issues = issues
+                        st.success("Transaction added.")
+
+        with st.expander("Budgets & Goals", expanded=False):
+            b_cat = st.selectbox("Budget category", list(st.session_state.budgets.keys()))
+            b_amt = st.number_input("Monthly budget (₦)", min_value=0.0, value=float(st.session_state.budgets[b_cat]), step=1000.0)
+            if st.button("Update Budget", use_container_width=True):
+                st.session_state.budgets[b_cat] = int(b_amt)
+                st.success(f"{b_cat} budget updated.")
+
+            st.markdown("**Emergency Fund Goal**")
+            g_target = st.number_input("Target (₦)", min_value=1.0, value=float(st.session_state.goals['Emergency Fund']['target']), step=10000.0)
+            g_saved = st.number_input("Current saved (₦)", min_value=0.0, value=float(st.session_state.goals['Emergency Fund']['saved']), step=5000.0)
+            if st.button("Update Goal", use_container_width=True):
+                st.session_state.goals['Emergency Fund'] = {'target': int(g_target), 'saved': int(g_saved)}
+                st.success("Goal updated.")
+
         st.markdown("---")
-        
-        # Filters
         st.markdown("### Filters")
-        df = st.session_state.transactions.copy()
-        
-        if df.empty:
+        base_df = st.session_state.transactions.copy()
+        if base_df.empty:
             min_date, max_date = date.today(), date.today()
         else:
-            min_date, max_date = df['Date'].min().date(), df['Date'].max().date()
-            
-        date_range = st.date_input("Date Range", [min_date, max_date])
-        
+            min_date, max_date = base_df['Date'].min().date(), base_df['Date'].max().date()
+
+        period_preset = st.selectbox("Time Window", ["Custom", "This Month", "Last 30 Days", "Year to Date", "All Time"], index=2)
+        date_range = st.date_input("Date Range", [min_date, max_date], disabled=(period_preset != "Custom"))
         cats_filter = st.multiselect("Categories", CATEGORIES, default=CATEGORIES)
+        methods_filter = st.multiselect("Payment Methods", PAYMENT_METHODS, default=PAYMENT_METHODS)
         txn_types = st.multiselect("Transaction Type", ["Income", "Expense"], default=["Income", "Expense"])
+        search_q = st.text_input("Search Description", placeholder="e.g. Uber, rent, salary")
+        amt_floor = float(base_df['Amount'].min()) if not base_df.empty else -500000.0
+        amt_ceil = float(base_df['Amount'].max()) if not base_df.empty else 500000.0
+        amount_range = st.slider("Amount Range (₦)", min_value=amt_floor, max_value=amt_ceil, value=(amt_floor, amt_ceil))
 
-    # --- Filter Logic ---
-    if len(date_range) == 2:
-        start_d, end_d = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-        df = df[(df['Date'] >= start_d) & (df['Date'] <= end_d)]
-        
-    df = df[df['Category'].isin(cats_filter)]
-    
-    if "Income" not in txn_types: df = df[df['Amount'] < 0]
-    if "Expense" not in txn_types: df = df[df['Amount'] >= 0]
-    
-    # --- Empty State Check / Onboarding Flow ---
+    df = st.session_state.transactions.copy()
     if df.empty:
-        html_str = """
-<div class="onboarding-hero">
-    <div class="onboarding-title">Getting Started</div>
-    <div class="onboarding-subtitle">No transaction data is currently loaded. To view your dashboard, upload an existing dataset or start logging transactions manually.</div>
-</div>
-        """
-        st.markdown(html_str, unsafe_allow_html=True)
-        
-        st.markdown("<p style='color: #6B7280; font-size: 0.9rem;'>Tip: For testing purposes, upload the included <code>sample_test_data.csv</code> file.</p>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class="onboarding-hero">
+            <div class="onboarding-title">Getting Started</div>
+            <div class="onboarding-subtitle">Upload your data or click "Load Sample" in the sidebar to see the full analytics workspace.</div>
+        </div>
+        """, unsafe_allow_html=True)
         st.stop()
-        
-    income_val = df[df['Amount'] > 0]['Amount'].sum()
-    expense_val = df[df['Amount'] <= 0]['Amount'].sum()
-    net_val = income_val + expense_val
 
-    # --- KPI Row ---
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-title">Total Income</div><div class="kpi-val text-neutral">₦{income_val:,.0f}</div></div>', unsafe_allow_html=True)
-    with col2:
-        st.markdown(f'<div class="kpi-card"><div class="kpi-title">Total Expenses</div><div class="kpi-val text-neutral">₦{abs(expense_val):,.0f}</div></div>', unsafe_allow_html=True)
-    with col3:
-        n_class = "text-neutral" if net_val >= 0 else "text-red"
-        st.markdown(f'<div class="kpi-card"><div class="kpi-title">Net Savings</div><div class="kpi-val {n_class}">₦{net_val:,.0f}</div></div>', unsafe_allow_html=True)
-    with col4:
-        ratio = abs(expense_val) / income_val if income_val > 0 else 0
-        r_class = "text-neutral" if ratio <= 0.8 else "text-red"
-        st.markdown(f'<div class="kpi-card"><div class="kpi-title">Income Spent Ratio</div><div class="kpi-val {r_class}">{ratio*100:.1f}%</div></div>', unsafe_allow_html=True)
+    if period_preset == "Custom" and len(date_range) == 2:
+        start_d, end_d = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
+    else:
+        start_d, end_d = period_bounds(period_preset, min_date, max_date)
+    df = df[(df['Date'] >= start_d) & (df['Date'] <= end_d)]
+    df = df[df['Category'].isin(cats_filter)]
+    df = df[df['Payment_Method'].isin(methods_filter)]
+    if "Income" not in txn_types:
+        df = df[df['Amount'] < 0]
+    if "Expense" not in txn_types:
+        df = df[df['Amount'] > 0]
+    if search_q.strip():
+        df = df[df['Description'].str.contains(search_q.strip(), case=False, na=False)]
+    df = df[(df['Amount'] >= amount_range[0]) & (df['Amount'] <= amount_range[1])]
 
-    # --- Charts & Analysis ---
-    st.markdown('<div class="section-card"><h3 style="margin:0 0 0.6rem 0;">Cash Flow & Spending</h3></div>', unsafe_allow_html=True)
-    c1, c2 = st.columns([1.5, 1])
-    
-    with c1:
-        # Net Cash flow over time
-        flow = df.groupby(df['Date'].dt.to_period('W'))['Amount'].sum().reset_index()
-        flow['Date'] = flow['Date'].dt.start_time
-        
-        # Monochrome / Muted color scheme for tracking
-        flow['Color'] = np.where(flow['Amount'] < 0, '#d97706', '#0f4c81')
-        
-        fig1 = px.bar(flow, x='Date', y='Amount', title='Weekly Cash Flow Trend',
-                      color='Color', color_discrete_map='identity')
-        
-        fig1.update_layout(
-            margin=dict(l=20, r=20, t=50, b=20), 
-            plot_bgcolor='rgba(0,0,0,0)', 
-            paper_bgcolor='rgba(0,0,0,0)',
-            height=320,
-            font=dict(family="Avenir Next, Segoe UI, sans-serif", color="#475569", size=13),
-            title=dict(font=dict(size=16, color="#0f172a")),
-            xaxis=dict(showgrid=False, linecolor="#dbe3ee", title="", tickformat="%b %d", tickangle=-25, automargin=True),
-            yaxis=dict(showgrid=True, gridcolor="#eaf0f6", linecolor="rgba(0,0,0,0)", title="")
-        )
-        st.plotly_chart(fig1, use_container_width=True)
+    if df.empty:
+        st.warning("No records match the active filters. Broaden your filters to continue.")
+        st.stop()
 
-    with c2:
-        # Spending Breakdown
-        expenses_only = df[df['Amount'] < 0].copy()
-        if not expenses_only.empty:
-            expenses_only['Abs_Amount'] = expenses_only['Amount'].abs()
-            expense_summary = expenses_only.groupby('Category', as_index=False)['Abs_Amount'].sum().sort_values('Abs_Amount', ascending=False)
-            if len(expense_summary) > 6:
-                top_exp = expense_summary.head(5).copy()
-                others_amt = expense_summary.iloc[5:]['Abs_Amount'].sum()
-                if others_amt > 0:
-                    top_exp = pd.concat([top_exp, pd.DataFrame([{'Category': 'Others', 'Abs_Amount': others_amt}])], ignore_index=True)
-                expense_summary = top_exp
-            
-            # Corporate/Muted palette
-            slate_palette = ['#0f4c81', '#2c6ca3', '#4e8ab9', '#0e9f6e', '#d97706', '#94a3b8']
-            
-            fig2 = px.pie(expense_summary, values='Abs_Amount', names='Category', hole=0.66,
-                          title='Expense Allocation', 
-                          color_discrete_sequence=slate_palette)
-            
-            fig2.update_traces(
-                textposition='inside', 
-                textinfo='none', # Cleaner without numbers clipping over pie slices
-                hoverinfo='label+percent',
-                marker=dict(line=dict(color='#ffffff', width=1.5))
-            )
-            
-            fig2.update_layout(
-                margin=dict(l=15, r=15, t=50, b=70), 
-                height=340,
-                showlegend=True,
-                legend=dict(
-                    orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5,
-                    font=dict(size=10), itemclick="toggleothers"
-                ),
-                plot_bgcolor='rgba(0,0,0,0)', 
+    kpis = compute_kpis(df)
+    curr_net, prev_net, net_delta = month_over_month_net(st.session_state.transactions)
+    delta_color = "text-neutral" if net_delta >= 0 else "text-red"
+
+    m1, m2, m3, m4, m5 = st.columns(5)
+    with m1:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-title">Income</div><div class="kpi-val">₦{kpis["income"]:,.0f}</div></div>', unsafe_allow_html=True)
+    with m2:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-title">Expenses</div><div class="kpi-val">₦{abs(kpis["expense"]):,.0f}</div></div>', unsafe_allow_html=True)
+    with m3:
+        n_class = "text-neutral" if kpis["net"] >= 0 else "text-red"
+        st.markdown(f'<div class="kpi-card"><div class="kpi-title">Net Savings</div><div class="kpi-val {n_class}">₦{kpis["net"]:,.0f}</div></div>', unsafe_allow_html=True)
+    with m4:
+        sr_class = "text-neutral" if kpis["savings_rate"] >= 0 else "text-red"
+        st.markdown(f'<div class="kpi-card"><div class="kpi-title">Savings Rate</div><div class="kpi-val {sr_class}">{kpis["savings_rate"]:.1f}%</div></div>', unsafe_allow_html=True)
+    with m5:
+        st.markdown(f'<div class="kpi-card"><div class="kpi-title">MoM Net Change</div><div class="kpi-val {delta_color}">₦{net_delta:,.0f}</div></div>', unsafe_allow_html=True)
+
+    st.caption(f"Current month net: ₦{curr_net:,.0f}  |  Previous month net: ₦{prev_net:,.0f}")
+
+    tab_overview, tab_insights, tab_transactions = st.tabs(["Overview", "Insights", "Transactions & Export"])
+
+    with tab_overview:
+        st.markdown('<div class="section-card"><h3 style="margin:0 0 0.6rem 0;">Cash Flow & Allocation</h3></div>', unsafe_allow_html=True)
+        c1, c2 = st.columns([1.45, 1])
+        with c1:
+            flow = df.groupby(df['Date'].dt.to_period('W'))['Amount'].sum().reset_index()
+            flow['Date'] = flow['Date'].dt.start_time
+            flow['Color'] = np.where(flow['Amount'] < 0, '#d97706', '#0f4c81')
+            fig1 = px.bar(flow, x='Date', y='Amount', title='Weekly Cash Flow Trend', color='Color', color_discrete_map='identity')
+            fig1.update_layout(
+                margin=dict(l=20, r=20, t=50, b=20),
+                plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
+                height=320,
                 font=dict(family="Avenir Next, Segoe UI, sans-serif", color="#475569", size=13),
-                title=dict(font=dict(size=16, color="#0f172a"))
+                title=dict(font=dict(size=16, color="#0f172a")),
+                xaxis=dict(showgrid=False, linecolor="#dbe3ee", title="", tickformat="%b %d", tickangle=-25, automargin=True),
+                yaxis=dict(showgrid=True, gridcolor="#eaf0f6", linecolor="rgba(0,0,0,0)", title="")
             )
-            st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.info("No expense data to chart.")
+            st.plotly_chart(fig1, use_container_width=True)
 
-    # --- Budgeting & Goals ---
-    st.markdown("---")
-    st.markdown('<div class="section-card"><h3 style="margin:0;">Monthly Tracking</h3></div>', unsafe_allow_html=True)
-    c_b, c_g = st.columns(2)
-    
-    with c_b:
-        st.markdown("**Budget Adherence**")
-        
-        # Filter expenses to current month for budget checking
-        curr_mon_exp = expenses_only[expenses_only['Date'].dt.month == datetime.now().month]
-        mon_cat_sum = curr_mon_exp.groupby('Category')['Amount'].sum().abs().to_dict()
-        
-        for cat, budget in st.session_state.budgets.items():
-            spent = mon_cat_sum.get(cat, 0)
-            pct = min((spent / budget) * 100, 100)
-            
-            p_col, t_col = st.columns([3, 1])
-            with p_col:
-                st.markdown(f"**{cat}** (₦{spent:,.0f} / ₦{budget:,.0f})")
+            daily = df.sort_values('Date').groupby(df['Date'].dt.date, as_index=False)['Amount'].sum()
+            daily['Date'] = pd.to_datetime(daily['Date'])
+            daily['Balance'] = daily['Amount'].cumsum()
+            fig_line = go.Figure()
+            fig_line.add_trace(go.Scatter(
+                x=daily['Date'], y=daily['Balance'], mode='lines',
+                line=dict(color='#0e9f6e', width=2.4), name='Running Balance'
+            ))
+            fig_line.update_layout(
+                title="Running Net Balance",
+                margin=dict(l=15, r=15, t=45, b=10),
+                height=260,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Avenir Next, Segoe UI, sans-serif", color="#475569", size=12),
+                xaxis=dict(showgrid=False, title=""),
+                yaxis=dict(showgrid=True, gridcolor="#eaf0f6", title="")
+            )
+            st.plotly_chart(fig_line, use_container_width=True)
+
+        with c2:
+            expenses_only = df[df['Amount'] < 0].copy()
+            if not expenses_only.empty:
+                expenses_only['Abs_Amount'] = expenses_only['Amount'].abs()
+                expense_summary = expenses_only.groupby('Category', as_index=False)['Abs_Amount'].sum().sort_values('Abs_Amount', ascending=False)
+                if len(expense_summary) > 6:
+                    top_exp = expense_summary.head(5).copy()
+                    others_amt = expense_summary.iloc[5:]['Abs_Amount'].sum()
+                    if others_amt > 0:
+                        top_exp = pd.concat([top_exp, pd.DataFrame([{'Category': 'Others', 'Abs_Amount': others_amt}])], ignore_index=True)
+                    expense_summary = top_exp
+                fig2 = px.pie(
+                    expense_summary, values='Abs_Amount', names='Category', hole=0.66, title='Expense Allocation',
+                    color_discrete_sequence=['#0f4c81', '#2c6ca3', '#4e8ab9', '#0e9f6e', '#d97706', '#94a3b8']
+                )
+                fig2.update_traces(textposition='inside', textinfo='none', hoverinfo='label+percent',
+                                   marker=dict(line=dict(color='#ffffff', width=1.5)))
+                fig2.update_layout(
+                    margin=dict(l=15, r=15, t=50, b=70),
+                    height=340,
+                    showlegend=True,
+                    legend=dict(orientation="h", yanchor="top", y=-0.1, xanchor="center", x=0.5, font=dict(size=10)),
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(family="Avenir Next, Segoe UI, sans-serif", color="#475569", size=13),
+                    title=dict(font=dict(size=16, color="#0f172a"))
+                )
+                st.plotly_chart(fig2, use_container_width=True)
+            else:
+                st.info("No expense data to chart.")
+
+            st.markdown("**Budget Adherence (This Month)**")
+            curr_month = pd.Timestamp.today().month
+            curr_year = pd.Timestamp.today().year
+            month_exp = st.session_state.transactions[
+                (st.session_state.transactions['Date'].dt.month == curr_month) &
+                (st.session_state.transactions['Date'].dt.year == curr_year) &
+                (st.session_state.transactions['Amount'] < 0)
+            ]
+            month_cat_sum = month_exp.groupby('Category')['Amount'].sum().abs().to_dict()
+            for cat, budget in st.session_state.budgets.items():
+                spent = month_cat_sum.get(cat, 0)
+                pct = 0 if budget <= 0 else min((spent / budget) * 100, 100)
+                st.markdown(f"**{cat}**  `₦{spent:,.0f} / ₦{budget:,.0f}`")
                 st.progress(int(pct))
-            with t_col:
-                if pct > 99:
-                    st.error("Over")
-                elif pct > 85:
-                    st.warning("Warning")
-                else:
-                    st.success("Good")
 
-    with c_g:
-        st.markdown("**Savings Goals Position**")
-        for goal_name, g_data in st.session_state.goals.items():
-            target, saved = g_data['target'], g_data['saved']
-            g_pct = (saved / target) * 100
-            
-            st.markdown(f"**{goal_name}**")
-            cols_g = st.columns([1, 2])
-            with cols_g[0]:
-                st.markdown(f"""
-                <div style="font-size:20px; font-weight:600; color:#111827;">{g_pct:.0f}%</div>
-                <div style="font-size:12px; color:#6B7280;">Rem: ₦{(target-saved):,.0f}</div>
-                """, unsafe_allow_html=True)
-            with cols_g[1]:
-                st.progress(int(g_pct))
-                
-        # Smart Alert
-        if mon_cat_sum.get('Airtime/Data Bundles', 0) > st.session_state.budgets.get('Airtime/Data Bundles', 999999):
-            st.info("System notification: Airtime budget exceeded. Consider bulk plans.")
-            
-    # --- Transaction Table ---
-    st.markdown("---")
-    st.markdown('<div class="section-card"><h3 style="margin:0;">Transaction Registry</h3></div>', unsafe_allow_html=True)
-    
-    # Format for display
-    disp_df = df.copy()
-    disp_df['Date'] = disp_df['Date'].dt.strftime('%Y-%m-%d')
-    # Make a strictly styled display dataframe
-    st.dataframe(
-        disp_df.style.map(lambda x: 'color: #059669; font-weight:500' if x > 0 else 'color: #111827;', subset=['Amount']),
-        use_container_width=True,
-        height=300
-    )
+    with tab_insights:
+        st.markdown('<div class="section-card"><h3 style="margin:0;">Performance Insights</h3></div>', unsafe_allow_html=True)
+        i1, i2, i3 = st.columns(3)
+        top_category = "N/A"
+        if (df['Amount'] < 0).any():
+            top_category = df[df['Amount'] < 0].groupby('Category')['Amount'].sum().abs().sort_values(ascending=False).index[0]
+        with i1:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-title">Top Expense Category</div><div class="kpi-val">{top_category}</div></div>', unsafe_allow_html=True)
+        with i2:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-title">Average Daily Spend</div><div class="kpi-val">₦{kpis["avg_daily_spend"]:,.0f}</div></div>', unsafe_allow_html=True)
+        with i3:
+            st.markdown(f'<div class="kpi-card"><div class="kpi-title">Largest Single Expense</div><div class="kpi-val">₦{kpis["largest_expense"]:,.0f}</div></div>', unsafe_allow_html=True)
 
-    # --- Exports ---
-    st.markdown("<br>", unsafe_allow_html=True)
-    e1, e2, e3 = st.columns(3)
-    
-    with e1:
-        csv = disp_df.to_csv(index=False).encode('utf-8')
-        st.download_button("Download CSV", data=csv, file_name="finances.csv", mime="text/csv", use_container_width=True)
-        
-    with e2:
-        out_xl = io.BytesIO()
-        with pd.ExcelWriter(out_xl, engine='openpyxl') as writer:
-            disp_df.to_excel(writer, index=False, sheet_name='Transactions')
-        st.download_button("Download Excel", data=out_xl.getvalue(), file_name="finances.xlsx", 
-                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-                           
-    with e3:
-        if FPDF_AVAILABLE:
-            kpis = {'income': income_val, 'expense': expense_val, 'net': net_val}
-            pdf_bytes = generate_basic_pdf(df, kpis)
-            st.download_button("Download PDF", data=pdf_bytes, file_name="finance_report.pdf", 
-                               mime="application/pdf", use_container_width=True)
-        else:
-            st.button("Download PDF", disabled=True, help="pip install fpdf required", use_container_width=True)
+        left, right = st.columns([1.3, 1])
+        with left:
+            spenders = df[df['Amount'] < 0].copy()
+            if not spenders.empty:
+                spenders['Abs_Amount'] = spenders['Amount'].abs()
+                top_txn = spenders.nlargest(8, 'Abs_Amount')[['Date', 'Description', 'Category', 'Abs_Amount']].copy()
+                top_txn['Date'] = top_txn['Date'].dt.strftime('%Y-%m-%d')
+                top_txn = top_txn.rename(columns={'Abs_Amount': 'Amount'})
+                st.markdown("**Top Expense Transactions**")
+                st.dataframe(top_txn, use_container_width=True, height=290)
+            else:
+                st.info("No expense records in current filters.")
+        with right:
+            anomalies = detect_unusual_expenses(df)
+            st.markdown("**Unusual Expense Alerts**")
+            if anomalies.empty:
+                st.success("No unusual expenses detected for this filter scope.")
+            else:
+                anomalies_view = anomalies[['Date', 'Description', 'Category', 'Amount']].copy()
+                anomalies_view['Date'] = anomalies_view['Date'].dt.strftime('%Y-%m-%d')
+                anomalies_view['Amount'] = anomalies_view['Amount'].map(lambda x: f"₦{abs(x):,.0f}")
+                st.dataframe(anomalies_view, use_container_width=True, height=290)
 
-    # Footer
+        g = st.session_state.goals.get('Emergency Fund', {'target': 1, 'saved': 0})
+        goal_pct = min((g['saved'] / g['target']) * 100, 100) if g['target'] > 0 else 0
+        st.markdown("**Savings Goal Progress**")
+        st.progress(int(goal_pct))
+        st.caption(f"Emergency Fund: ₦{g['saved']:,.0f} saved out of ₦{g['target']:,.0f}")
+
+    with tab_transactions:
+        st.markdown('<div class="section-card"><h3 style="margin:0;">Transactions & Export</h3></div>', unsafe_allow_html=True)
+        disp_df = df.sort_values('Date', ascending=False).copy()
+        disp_df['Date'] = disp_df['Date'].dt.strftime('%Y-%m-%d')
+        st.dataframe(
+            disp_df.style.map(lambda x: 'color: #059669; font-weight:600' if x > 0 else 'color: #111827;', subset=['Amount']),
+            use_container_width=True,
+            height=360
+        )
+        st.markdown("<br>", unsafe_allow_html=True)
+        e1, e2, e3 = st.columns(3)
+        with e1:
+            csv = disp_df.to_csv(index=False).encode('utf-8')
+            st.download_button("Download CSV", data=csv, file_name="finances.csv", mime="text/csv", use_container_width=True)
+        with e2:
+            out_xl = io.BytesIO()
+            with pd.ExcelWriter(out_xl, engine='openpyxl') as writer:
+                disp_df.to_excel(writer, index=False, sheet_name='Transactions')
+            st.download_button(
+                "Download Excel",
+                data=out_xl.getvalue(),
+                file_name="finances.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        with e3:
+            if FPDF_AVAILABLE:
+                pdf_bytes = generate_basic_pdf(df, {'income': kpis['income'], 'expense': kpis['expense'], 'net': kpis['net']})
+                st.download_button("Download PDF", data=pdf_bytes, file_name="finance_report.pdf", mime="application/pdf", use_container_width=True)
+            else:
+                st.button("Download PDF", disabled=True, help="pip install fpdf required", use_container_width=True)
+
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #64748b; font-size: 13px;'>Finance Tracker • Data stays in this Streamlit session unless you export it.</p>", unsafe_allow_html=True)
 
