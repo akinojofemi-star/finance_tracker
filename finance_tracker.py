@@ -341,14 +341,22 @@ def init_session_state():
         st.session_state.data_issues = {}
     if 'available_categories' not in st.session_state:
         st.session_state.available_categories = CATEGORIES.copy()
+    if 'available_payment_methods' not in st.session_state:
+        st.session_state.available_payment_methods = PAYMENT_METHODS.copy()
 
 def refresh_available_categories(df):
-    """Merge default and uploaded categories for UI controls."""
+    """Use uploaded categories when available; otherwise fallback defaults."""
     dynamic = []
     if not df.empty and 'Category' in df.columns:
         dynamic = sorted([c for c in df['Category'].dropna().astype(str).str.strip().unique().tolist() if c])
-    merged = sorted(set(CATEGORIES + dynamic))
-    st.session_state.available_categories = merged if merged else CATEGORIES.copy()
+    st.session_state.available_categories = dynamic if dynamic else CATEGORIES.copy()
+
+def refresh_available_payment_methods(df):
+    """Use uploaded payment methods when available; otherwise fallback defaults."""
+    dynamic = []
+    if not df.empty and 'Payment_Method' in df.columns:
+        dynamic = sorted([m for m in df['Payment_Method'].dropna().astype(str).str.strip().unique().tolist() if m])
+    st.session_state.available_payment_methods = dynamic if dynamic else PAYMENT_METHODS.copy()
 
 def clean_transactions(df):
     """Standardize incoming transaction data and report quality issues."""
@@ -374,7 +382,7 @@ def clean_transactions(df):
 
     cleaned['Description'] = cleaned['Description'].replace('', 'No description')
     cleaned.loc[cleaned['Category'] == '', 'Category'] = 'Miscellaneous'
-    cleaned.loc[~cleaned['Payment_Method'].isin(PAYMENT_METHODS), 'Payment_Method'] = 'Cash'
+    cleaned.loc[cleaned['Payment_Method'] == '', 'Payment_Method'] = 'Cash'
 
     cleaned = cleaned.dropna(subset=['Date', 'Amount'])
     cleaned = cleaned[cleaned['Amount'] != 0]
@@ -507,12 +515,14 @@ def main():
                 st.session_state.transactions = sample_df
                 st.session_state.data_issues = issues
                 refresh_available_categories(sample_df)
+                refresh_available_payment_methods(sample_df)
                 st.rerun()
         with cta_r:
             if st.button("Clear Data", use_container_width=True):
                 st.session_state.transactions = pd.DataFrame(columns=REQUIRED_COLS)
                 st.session_state.data_issues = {}
                 st.session_state.available_categories = CATEGORIES.copy()
+                st.session_state.available_payment_methods = PAYMENT_METHODS.copy()
                 st.rerun()
 
         uploaded_file = st.file_uploader("Upload data (CSV/Excel)", type=["csv", "xlsx"])
@@ -523,6 +533,7 @@ def main():
                 st.session_state.transactions = cleaned
                 st.session_state.data_issues = issues
                 refresh_available_categories(cleaned)
+                refresh_available_payment_methods(cleaned)
                 st.success(f"Loaded {len(cleaned)} clean records.")
             except Exception as e:
                 st.error(f"Upload failed: {e}")
@@ -544,7 +555,8 @@ def main():
                 default_expense = t_cat not in INCOME_CATS
                 t_amt = st.number_input("Amount (₦)", min_value=0.0, step=100.0)
                 is_expense = st.checkbox("Mark as expense", value=default_expense)
-                t_method = st.selectbox("Payment Method", PAYMENT_METHODS)
+                payment_options = st.session_state.available_payment_methods
+                t_method = st.selectbox("Payment Method", payment_options)
                 if st.form_submit_button("Save Transaction"):
                     if t_amt <= 0 or not t_desc.strip():
                         st.error("Amount must be above zero and description is required.")
@@ -561,6 +573,7 @@ def main():
                         st.session_state.transactions = cleaned
                         st.session_state.data_issues = issues
                         refresh_available_categories(cleaned)
+                        refresh_available_payment_methods(cleaned)
                         st.success("Transaction added.")
 
         with st.expander("Budgets & Goals", expanded=False):
@@ -586,12 +599,20 @@ def main():
         else:
             min_date, max_date = base_df['Date'].min().date(), base_df['Date'].max().date()
 
-        period_preset = st.selectbox("Time Window", ["Custom", "This Month", "Last 30 Days", "Year to Date", "All Time"], index=2)
+        period_preset = st.selectbox("Time Window", ["Custom", "This Month", "Last 30 Days", "Year to Date", "All Time"], index=4)
         date_range = st.date_input("Date Range", [min_date, max_date], disabled=(period_preset != "Custom"))
         category_filters = st.session_state.available_categories
         cats_filter = st.multiselect("Categories", category_filters, default=category_filters)
-        methods_filter = st.multiselect("Payment Methods", PAYMENT_METHODS, default=PAYMENT_METHODS)
-        txn_types = st.multiselect("Transaction Type", ["Income", "Expense"], default=["Income", "Expense"])
+        payment_filters = st.session_state.available_payment_methods
+        methods_filter = st.multiselect("Payment Methods", payment_filters, default=payment_filters)
+        txn_type_options = []
+        if not base_df.empty and (base_df['Amount'] > 0).any():
+            txn_type_options.append("Income")
+        if not base_df.empty and (base_df['Amount'] < 0).any():
+            txn_type_options.append("Expense")
+        if not txn_type_options:
+            txn_type_options = ["Income", "Expense"]
+        txn_types = st.multiselect("Transaction Type", txn_type_options, default=txn_type_options)
         search_q = st.text_input("Search Description", placeholder="e.g. Uber, rent, salary")
         amt_floor = float(base_df['Amount'].min()) if not base_df.empty else -500000.0
         amt_ceil = float(base_df['Amount'].max()) if not base_df.empty else 500000.0
@@ -599,6 +620,7 @@ def main():
 
     df = st.session_state.transactions.copy()
     refresh_available_categories(df)
+    refresh_available_payment_methods(df)
     if df.empty:
         st.markdown("""
         <div class="onboarding-hero">
