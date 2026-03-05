@@ -192,6 +192,27 @@ st.markdown("""
         background-color: #f9fbfe !important;
         border-right: 1px solid #d8e3ef;
     }
+    [data-testid="stSidebar"] .stMarkdown,
+    [data-testid="stSidebar"] .stMarkdown p,
+    [data-testid="stSidebar"] .stMarkdown span,
+    [data-testid="stSidebar"] label {
+        color: #1f2937 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary,
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary p,
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary span {
+        color: #1f2937 !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] {
+        border: 1px solid #c8d2dc;
+        border-radius: 10px;
+        background: #f7f2e8;
+    }
+    [data-testid="stSidebar"] [data-testid="stExpander"] > details > summary {
+        background: #eef5f4;
+        border-radius: 10px;
+    }
     .stProgress > div > div > div > div { background-color: #5b6c8f; }
     hr { border-color: var(--line); margin: 0.9rem 0; }
     .stTabs [data-baseweb="tab-list"] {
