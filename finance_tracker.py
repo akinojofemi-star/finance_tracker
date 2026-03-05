@@ -394,13 +394,16 @@ def init_session_state():
         st.session_state.available_categories = CATEGORIES.copy()
     if 'available_payment_methods' not in st.session_state:
         st.session_state.available_payment_methods = PAYMENT_METHODS.copy()
+    if 'statement_balance' not in st.session_state:
+        st.session_state.statement_balance = None
 
-def set_transaction_state(df, issues=None):
+def set_transaction_state(df, issues=None, statement_balance=None):
     """Single source of truth when replacing transaction state."""
     st.session_state.transactions = df
     st.session_state.data_issues = issues or {}
     refresh_available_categories(df)
     refresh_available_payment_methods(df)
+    st.session_state.statement_balance = statement_balance
 
 def reset_filter_state():
     """Clear active sidebar filters."""
@@ -417,7 +420,8 @@ def build_session_snapshot():
         "exported_at": datetime.now().isoformat(),
         "transactions": tx.to_dict(orient='records'),
         "budgets": st.session_state.budgets,
-        "goals": st.session_state.goals
+        "goals": st.session_state.goals,
+        "statement_balance": st.session_state.statement_balance
     }
     return json.dumps(payload, ensure_ascii=True, indent=2).encode("utf-8")
 
@@ -427,7 +431,7 @@ def load_session_snapshot(snapshot_bytes):
     if tx.empty:
         tx = pd.DataFrame(columns=REQUIRED_COLS)
     cleaned, issues = clean_transactions(tx)
-    set_transaction_state(cleaned, issues)
+    set_transaction_state(cleaned, issues, payload.get("statement_balance"))
     st.session_state.budgets = payload.get("budgets", {}) or {}
     st.session_state.goals = payload.get("goals", {'Emergency Fund': {'target': 500000, 'saved': 250000}})
 
@@ -488,6 +492,37 @@ def _find_first_matching_col(norm_to_original, aliases, used=None):
             if col not in used:
                 return col
     return None
+
+def extract_statement_balance_meta(df):
+    """Extract starting/closing balance from imported data when available."""
+    if 'Balance' not in df.columns:
+        return None
+    work = df.copy()
+    work['Balance'] = _parse_numeric_series(work['Balance'])
+    work = work.dropna(subset=['Balance'])
+    if work.empty:
+        return None
+
+    if 'Date' in work.columns:
+        work['Date'] = pd.to_datetime(work['Date'], errors='coerce')
+        dated = work.dropna(subset=['Date']).sort_values('Date')
+        if not dated.empty:
+            start_row = dated.iloc[0]
+            close_row = dated.iloc[-1]
+            return {
+                "start": float(start_row['Balance']),
+                "close": float(close_row['Balance']),
+                "start_date": start_row['Date'].strftime('%Y-%m-%d'),
+                "close_date": close_row['Date'].strftime('%Y-%m-%d')
+            }
+
+    # Fallback to row order when dates are unavailable.
+    return {
+        "start": float(work.iloc[0]['Balance']),
+        "close": float(work.iloc[-1]['Balance']),
+        "start_date": None,
+        "close_date": None
+    }
 
 def _signed_by_context(result, renamed, norm_to_original):
     """
@@ -631,6 +666,11 @@ def infer_schema(df):
             used.add(pm_col)
         else:
             result['Payment_Method'] = 'Unspecified'
+
+    # Optional balance column for statement start/close context.
+    bal_col = _find_first_matching_col(norm_to_original, BALANCE_ALIASES)
+    if bal_col:
+        result['Balance'] = _parse_numeric_series(renamed[bal_col])
 
     return _signed_by_context(result, renamed, norm_to_original)
 
@@ -912,9 +952,15 @@ def main():
         if uploaded_file:
             try:
                 raw_df = load_any_uploaded_table(uploaded_file)
+                statement_balance = extract_statement_balance_meta(raw_df)
                 cleaned, issues = clean_transactions(raw_df)
-                set_transaction_state(cleaned, issues)
+                set_transaction_state(cleaned, issues, statement_balance)
                 st.success(f"Loaded {len(cleaned)} clean records.")
+                if statement_balance:
+                    st.caption(
+                        f"Detected statement balances: opening ₦{statement_balance['start']:,.2f} "
+                        f"and closing ₦{statement_balance['close']:,.2f}."
+                    )
             except Exception as e:
                 st.error(f"Upload failed: {e}")
 
@@ -1064,6 +1110,28 @@ def main():
         f"Month-over-month net delta = (current month net cash flow) - (previous month net cash flow). "
         f"Current: ₦{curr_net:,.0f} | Previous: ₦{prev_net:,.0f}"
     )
+
+    statement_balance = st.session_state.get('statement_balance')
+    if statement_balance:
+        b1, b2 = st.columns(2)
+        start_label = "Opening Balance"
+        close_label = "Closing Balance"
+        if statement_balance.get('start_date'):
+            start_label = f"Opening Balance ({statement_balance['start_date']})"
+        if statement_balance.get('close_date'):
+            close_label = f"Closing Balance ({statement_balance['close_date']})"
+        with b1:
+            st.markdown(
+                f'<div class="kpi-card"><div class="kpi-title">{start_label}</div>'
+                f'<div class="kpi-val">₦{statement_balance["start"]:,.0f}</div></div>',
+                unsafe_allow_html=True
+            )
+        with b2:
+            st.markdown(
+                f'<div class="kpi-card"><div class="kpi-title">{close_label}</div>'
+                f'<div class="kpi-val">₦{statement_balance["close"]:,.0f}</div></div>',
+                unsafe_allow_html=True
+            )
 
     tab_overview, tab_insights, tab_transactions = st.tabs(["Overview", "Insights", "Transactions & Export"])
 
