@@ -339,11 +339,8 @@ def init_session_state():
         # Initialize an empty dataframe with correct columns instead of sample data
         st.session_state.transactions = pd.DataFrame(columns=REQUIRED_COLS)
     if 'budgets' not in st.session_state:
-        # Default monthly budgets (amount in NGN)
-        st.session_state.budgets = {
-            'Food': 50000, 'Transport': 30000, 'Airtime/Data Bundles': 15000, 
-            'Entertainment': 20000, 'Utilities': 25000
-        }
+        # User-defined budgets only; empty until explicitly set.
+        st.session_state.budgets = {}
     if 'goals' not in st.session_state:
         st.session_state.goals = {'Emergency Fund': {'target': 500000, 'saved': 250000}}
     if 'data_issues' not in st.session_state:
@@ -745,8 +742,14 @@ def main():
             b_cat = st.selectbox("Budget category", budget_choices)
             b_amt = st.number_input("Monthly budget (₦)", min_value=0.0, value=float(st.session_state.budgets.get(b_cat, 0)), step=1000.0)
             if st.button("Update Budget", use_container_width=True):
-                st.session_state.budgets[b_cat] = int(b_amt)
-                st.success(f"{b_cat} budget updated.")
+                if b_amt > 0:
+                    st.session_state.budgets[b_cat] = int(b_amt)
+                    st.success(f"{b_cat} budget updated.")
+                elif b_cat in st.session_state.budgets:
+                    del st.session_state.budgets[b_cat]
+                    st.success(f"{b_cat} budget removed.")
+                else:
+                    st.info("Set an amount above 0 to create a budget.")
 
             st.markdown("**Emergency Fund Goal**")
             g_target = st.number_input("Target (₦)", min_value=1.0, value=float(st.session_state.goals['Emergency Fund']['target']), step=10000.0)
@@ -932,11 +935,15 @@ def main():
                 (st.session_state.transactions['Amount'] < 0)
             ]
             month_cat_sum = month_exp.groupby('Category')['Amount'].sum().abs().to_dict()
-            for cat, budget in st.session_state.budgets.items():
-                spent = month_cat_sum.get(cat, 0)
-                pct = 0 if budget <= 0 else min((spent / budget) * 100, 100)
-                st.markdown(f"**{cat}**  `₦{spent:,.0f} / ₦{budget:,.0f}`")
-                st.progress(int(pct))
+            active_budgets = {cat: b for cat, b in st.session_state.budgets.items() if b > 0}
+            if not active_budgets:
+                st.info("No monthly budgets set yet. Add budgets in the sidebar under 'Budgets & Goals'.")
+            else:
+                for cat, budget in active_budgets.items():
+                    spent = month_cat_sum.get(cat, 0)
+                    pct = min((spent / budget) * 100, 100)
+                    st.markdown(f"**{cat}**  `₦{spent:,.0f} / ₦{budget:,.0f}`")
+                    st.progress(int(pct))
 
     with tab_insights:
         st.markdown('<div class="section-card"><h3 style="margin:0;">Performance Insights</h3></div>', unsafe_allow_html=True)
