@@ -2,7 +2,7 @@
 Personal Finance & Expense Tracker Dashboard
 --------------------------------------------
 Installation:
-pip install streamlit pandas plotly fpdf openpyxl
+pip install streamlit pandas plotly fpdf openpyxl pdfplumber
 
 Run locally:
 streamlit run finance_tracker.py
@@ -25,6 +25,12 @@ try:
     FPDF_AVAILABLE = True
 except ImportError:
     FPDF_AVAILABLE = False
+
+try:
+    import pdfplumber
+    PDF_IMPORT_AVAILABLE = True
+except ImportError:
+    PDF_IMPORT_AVAILABLE = False
 
 # --- Config & Initialization ---
 st.set_page_config(
@@ -536,14 +542,77 @@ def infer_schema(df):
 
     return result
 
+def _looks_like_header_row(values):
+    if not values:
+        return False
+    vals = [str(v).strip() for v in values if str(v).strip()]
+    if len(vals) < 2:
+        return False
+    combined = " ".join(vals).lower()
+    header_tokens = ["date", "amount", "description", "narration", "category", "debit", "credit", "type", "balance", "merchant"]
+    token_hits = sum(tok in combined for tok in header_tokens)
+    numeric_ratio = sum(any(ch.isdigit() for ch in v) for v in vals) / max(len(vals), 1)
+    return token_hits >= 1 and numeric_ratio < 0.5
+
+def extract_tables_from_pdf_bytes(pdf_bytes):
+    """Extract table-like dataframes from a PDF file."""
+    if not PDF_IMPORT_AVAILABLE:
+        raise ValueError("PDF import support is not installed. Run: pip install pdfplumber")
+
+    tables = []
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+        for page in pdf.pages:
+            page_tables = page.extract_tables() or []
+            for tb in page_tables:
+                if not tb or len(tb) < 2:
+                    continue
+                width = max(len(r) for r in tb if r) if tb else 0
+                normalized_rows = []
+                for row in tb:
+                    row = row or []
+                    row = [("" if c is None else str(c).strip()) for c in row]
+                    if len(row) < width:
+                        row = row + [""] * (width - len(row))
+                    normalized_rows.append(row)
+                if not normalized_rows:
+                    continue
+
+                header_row = normalized_rows[0]
+                body_rows = normalized_rows[1:]
+                if _looks_like_header_row(header_row):
+                    cols = []
+                    for idx, col in enumerate(header_row):
+                        col_name = col if col else f"col_{idx+1}"
+                        if col_name in cols:
+                            col_name = f"{col_name}_{idx+1}"
+                        cols.append(col_name)
+                    df = pd.DataFrame(body_rows, columns=cols)
+                else:
+                    cols = [f"col_{i+1}" for i in range(width)]
+                    df = pd.DataFrame(normalized_rows, columns=cols)
+
+                # Remove fully empty rows/cols
+                df = df.replace(r'^\s*$', np.nan, regex=True).dropna(axis=0, how='all').dropna(axis=1, how='all')
+                if not df.empty:
+                    tables.append(df.reset_index(drop=True))
+
+    return tables
+
 def load_any_uploaded_table(uploaded_file):
     """Read CSV/Excel and return the best candidate table with inferred schema."""
     candidates = []
-    if uploaded_file.name.endswith('.csv'):
-        candidates.append(pd.read_csv(uploaded_file))
-    else:
-        sheets = pd.read_excel(uploaded_file, sheet_name=None)
+    filename = uploaded_file.name.lower()
+    file_bytes = uploaded_file.getvalue()
+
+    if filename.endswith('.csv'):
+        candidates.append(pd.read_csv(io.BytesIO(file_bytes)))
+    elif filename.endswith('.xlsx') or filename.endswith('.xls'):
+        sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)
         candidates.extend([df for df in sheets.values() if isinstance(df, pd.DataFrame) and not df.empty])
+    elif filename.endswith('.pdf'):
+        candidates.extend(extract_tables_from_pdf_bytes(file_bytes))
+    else:
+        raise ValueError("Unsupported file type. Please upload CSV, Excel, or PDF.")
 
     if not candidates:
         raise ValueError("No readable tabular data found in file.")
@@ -747,7 +816,7 @@ def main():
                 set_transaction_state(pd.DataFrame(columns=REQUIRED_COLS), {})
                 st.rerun()
 
-        uploaded_file = st.file_uploader("Upload data (CSV/Excel)", type=["csv", "xlsx"])
+        uploaded_file = st.file_uploader("Upload data (CSV/Excel/PDF)", type=["csv", "xlsx", "xls", "pdf"])
         if uploaded_file:
             try:
                 raw_df = load_any_uploaded_table(uploaded_file)
