@@ -78,7 +78,11 @@ st.markdown("""
 
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    header {visibility: visible;}
+    [data-testid="stHeader"] {
+        background: rgba(237, 245, 244, 0.85);
+        backdrop-filter: blur(4px);
+    }
 
     .dashboard-hero {
         background: linear-gradient(135deg, #5b6c8f 0%, #6f82a6 55%, #8fb8bf 100%);
