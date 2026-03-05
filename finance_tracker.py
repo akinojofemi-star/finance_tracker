@@ -442,7 +442,24 @@ def _norm_col(col_name):
     return ''.join(ch for ch in str(col_name).strip().lower() if ch.isalnum())
 
 def _parse_numeric_series(series):
-    return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False).str.replace(' ', '', regex=False), errors='coerce')
+    s = series.astype(str).str.strip()
+    s_lower = s.str.lower()
+
+    # Sign hints commonly found in bank statements.
+    has_paren = s.str.contains(r'^\(.*\)$', regex=True, na=False)
+    has_dr = s_lower.str.contains(r'\b(dr|debit|withdraw|outflow|payment)\b', regex=True, na=False)
+    has_cr = s_lower.str.contains(r'\b(cr|credit|deposit|inflow|salary)\b', regex=True, na=False)
+
+    # Keep only numeric tokens and decimal/minus symbols.
+    cleaned = s.str.replace(',', '', regex=False).str.replace(r'[^0-9.\-]', '', regex=True)
+    nums = pd.to_numeric(cleaned, errors='coerce')
+
+    # Normalize sign using hints when amount is parseable.
+    nums = nums.where(~(has_paren & nums.notna()), -nums.abs())
+    nums = nums.where(~(has_dr & nums.notna()), -nums.abs())
+    nums = nums.where(~(has_cr & nums.notna()), nums.abs())
+
+    return nums
 
 def _best_column_by_parse(df, parser_fn, min_ratio=0.6, excluded=None):
     excluded = excluded or set()
@@ -660,7 +677,7 @@ def clean_transactions(df):
 
     cleaned = cleaned[REQUIRED_COLS].copy()
     cleaned['Date'] = pd.to_datetime(cleaned['Date'], errors='coerce')
-    cleaned['Amount'] = pd.to_numeric(cleaned['Amount'], errors='coerce')
+    cleaned['Amount'] = _parse_numeric_series(cleaned['Amount'])
     cleaned['Description'] = cleaned['Description'].fillna('').astype(str).str.strip()
     cleaned['Category'] = cleaned['Category'].fillna('Miscellaneous').astype(str).str.strip()
     cleaned['Payment_Method'] = cleaned['Payment_Method'].fillna('Cash').astype(str).str.strip()
