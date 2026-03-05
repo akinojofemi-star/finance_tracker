@@ -339,6 +339,16 @@ def init_session_state():
         st.session_state.goals = {'Emergency Fund': {'target': 500000, 'saved': 250000}}
     if 'data_issues' not in st.session_state:
         st.session_state.data_issues = {}
+    if 'available_categories' not in st.session_state:
+        st.session_state.available_categories = CATEGORIES.copy()
+
+def refresh_available_categories(df):
+    """Merge default and uploaded categories for UI controls."""
+    dynamic = []
+    if not df.empty and 'Category' in df.columns:
+        dynamic = sorted([c for c in df['Category'].dropna().astype(str).str.strip().unique().tolist() if c])
+    merged = sorted(set(CATEGORIES + dynamic))
+    st.session_state.available_categories = merged if merged else CATEGORIES.copy()
 
 def clean_transactions(df):
     """Standardize incoming transaction data and report quality issues."""
@@ -363,7 +373,7 @@ def clean_transactions(df):
     issues['future_dates'] = int((cleaned['Date'] > pd.Timestamp.today().normalize()).sum())
 
     cleaned['Description'] = cleaned['Description'].replace('', 'No description')
-    cleaned.loc[~cleaned['Category'].isin(CATEGORIES), 'Category'] = 'Miscellaneous'
+    cleaned.loc[cleaned['Category'] == '', 'Category'] = 'Miscellaneous'
     cleaned.loc[~cleaned['Payment_Method'].isin(PAYMENT_METHODS), 'Payment_Method'] = 'Cash'
 
     cleaned = cleaned.dropna(subset=['Date', 'Amount'])
@@ -496,11 +506,13 @@ def main():
                 sample_df, issues = clean_transactions(generate_sample_data())
                 st.session_state.transactions = sample_df
                 st.session_state.data_issues = issues
+                refresh_available_categories(sample_df)
                 st.rerun()
         with cta_r:
             if st.button("Clear Data", use_container_width=True):
                 st.session_state.transactions = pd.DataFrame(columns=REQUIRED_COLS)
                 st.session_state.data_issues = {}
+                st.session_state.available_categories = CATEGORIES.copy()
                 st.rerun()
 
         uploaded_file = st.file_uploader("Upload data (CSV/Excel)", type=["csv", "xlsx"])
@@ -510,6 +522,7 @@ def main():
                 cleaned, issues = clean_transactions(raw_df)
                 st.session_state.transactions = cleaned
                 st.session_state.data_issues = issues
+                refresh_available_categories(cleaned)
                 st.success(f"Loaded {len(cleaned)} clean records.")
             except Exception as e:
                 st.error(f"Upload failed: {e}")
@@ -524,9 +537,10 @@ def main():
         st.markdown("---")
         with st.expander("Add New Transaction", expanded=False):
             with st.form("new_txn_form", clear_on_submit=True):
+                category_options = st.session_state.available_categories
                 t_date = st.date_input("Date", date.today())
                 t_desc = st.text_input("Description", placeholder="E.g., Electricity token")
-                t_cat = st.selectbox("Category", CATEGORIES)
+                t_cat = st.selectbox("Category", category_options)
                 default_expense = t_cat not in INCOME_CATS
                 t_amt = st.number_input("Amount (₦)", min_value=0.0, step=100.0)
                 is_expense = st.checkbox("Mark as expense", value=default_expense)
@@ -546,11 +560,13 @@ def main():
                         cleaned, issues = clean_transactions(merged)
                         st.session_state.transactions = cleaned
                         st.session_state.data_issues = issues
+                        refresh_available_categories(cleaned)
                         st.success("Transaction added.")
 
         with st.expander("Budgets & Goals", expanded=False):
-            b_cat = st.selectbox("Budget category", list(st.session_state.budgets.keys()))
-            b_amt = st.number_input("Monthly budget (₦)", min_value=0.0, value=float(st.session_state.budgets[b_cat]), step=1000.0)
+            budget_choices = st.session_state.available_categories
+            b_cat = st.selectbox("Budget category", budget_choices)
+            b_amt = st.number_input("Monthly budget (₦)", min_value=0.0, value=float(st.session_state.budgets.get(b_cat, 0)), step=1000.0)
             if st.button("Update Budget", use_container_width=True):
                 st.session_state.budgets[b_cat] = int(b_amt)
                 st.success(f"{b_cat} budget updated.")
@@ -572,7 +588,8 @@ def main():
 
         period_preset = st.selectbox("Time Window", ["Custom", "This Month", "Last 30 Days", "Year to Date", "All Time"], index=2)
         date_range = st.date_input("Date Range", [min_date, max_date], disabled=(period_preset != "Custom"))
-        cats_filter = st.multiselect("Categories", CATEGORIES, default=CATEGORIES)
+        category_filters = st.session_state.available_categories
+        cats_filter = st.multiselect("Categories", category_filters, default=category_filters)
         methods_filter = st.multiselect("Payment Methods", PAYMENT_METHODS, default=PAYMENT_METHODS)
         txn_types = st.multiselect("Transaction Type", ["Income", "Expense"], default=["Income", "Expense"])
         search_q = st.text_input("Search Description", placeholder="e.g. Uber, rent, salary")
@@ -581,6 +598,7 @@ def main():
         amount_range = st.slider("Amount Range (₦)", min_value=amt_floor, max_value=amt_ceil, value=(amt_floor, amt_ceil))
 
     df = st.session_state.transactions.copy()
+    refresh_available_categories(df)
     if df.empty:
         st.markdown("""
         <div class="onboarding-hero">
