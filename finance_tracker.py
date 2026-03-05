@@ -48,7 +48,12 @@ st.markdown("""
     h1, h2, h3 { color: #111827 !important; letter-spacing: -0.02em; font-weight: 700; }
     
     /* Layout Adjustments */
-    .block-container { padding-top: 1.5rem !important; max-width: 1200px; }
+    .block-container { padding-top: 0rem !important; max-width: 1200px; }
+    
+    /* Hide Streamlit Watermarks */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
     
     /* Minimalist KPI Cards */
     .kpi-card {
@@ -314,36 +319,37 @@ def main():
     
     # --- Empty State Check / Onboarding Flow ---
     if df.empty:
-        st.markdown("""
-            <div class="onboarding-hero">
-                <div class="onboarding-title">Getting Started</div>
-                <div class="onboarding-subtitle">No transaction data is currently loaded. To view your dashboard, upload an existing dataset or start logging transactions manually.</div>
-                
-                <ul class="feature-list">
-                    <li class="feature-item">
-                        <div class="feature-number">1</div>
-                        <div class="feature-text-block">
-                            <div class="feature-title">Import historical data</div>
-                            <div class="feature-desc">Use the sidebar to upload a CSV or Excel file containing your transaction history. The file must include Date, Description, Category, Amount, and Payment_Method columns.</div>
-                        </div>
-                    </li>
-                    <li class="feature-item">
-                        <div class="feature-number">2</div>
-                        <div class="feature-text-block">
-                            <div class="feature-title">Log records manually</div>
-                            <div class="feature-desc">Expand the "Add New Transaction" form in the sidebar to enter single expenses or income items directly into the system.</div>
-                        </div>
-                    </li>
-                    <li class="feature-item">
-                        <div class="feature-number">3</div>
-                        <div class="feature-text-block">
-                            <div class="feature-title">Review analysis</div>
-                            <div class="feature-desc">Once data is populated, this dashboard will automatically generate reporting on spending, net cash flow, and budget adherence.</div>
-                        </div>
-                    </li>
-                </ul>
+        html_str = """
+<div class="onboarding-hero">
+    <div class="onboarding-title">Getting Started</div>
+    <div class="onboarding-subtitle">No transaction data is currently loaded. To view your dashboard, upload an existing dataset or start logging transactions manually.</div>
+    
+    <ul class="feature-list">
+        <li class="feature-item">
+            <div class="feature-number">1</div>
+            <div class="feature-text-block">
+                <div class="feature-title">Import historical data</div>
+                <div class="feature-desc">Use the sidebar to upload a CSV or Excel file containing your transaction history. The file must include Date, Description, Category, Amount, and Payment_Method columns.</div>
             </div>
-        """, unsafe_allow_html=True)
+        </li>
+        <li class="feature-item">
+            <div class="feature-number">2</div>
+            <div class="feature-text-block">
+                <div class="feature-title">Log records manually</div>
+                <div class="feature-desc">Expand the "Add New Transaction" form in the sidebar to enter single expenses or income items directly into the system.</div>
+            </div>
+        </li>
+        <li class="feature-item">
+            <div class="feature-number">3</div>
+            <div class="feature-text-block">
+                <div class="feature-title">Review analysis</div>
+                <div class="feature-desc">Once data is populated, this dashboard will automatically generate reporting on spending, net cash flow, and budget adherence.</div>
+            </div>
+        </li>
+    </ul>
+</div>
+        """
+        st.markdown(html_str, unsafe_allow_html=True)
         
         st.markdown("<p style='color: #6B7280; font-size: 0.9rem;'>Tip: For testing purposes, upload the included <code>sample_test_data.csv</code> file.</p>", unsafe_allow_html=True)
         st.stop()
