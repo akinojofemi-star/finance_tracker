@@ -57,10 +57,18 @@ st.markdown("""
         color: var(--ink);
     }
 
-    h1, h2, h3, h4, h5, h6, p, span, div {
+    .stApp, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+    .stApp p, .stApp label, .stApp button, .stApp input, .stApp textarea {
         font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif !important;
     }
     h1, h2, h3 { color: var(--ink) !important; letter-spacing: -0.02em; }
+
+    /* Keep icon fonts intact (prevents arrow/icon text from appearing as words). */
+    i.material-icons, i.material-icons-round, i.material-icons-outlined,
+    span.material-symbols-rounded, span.material-symbols-outlined, [class*="material-symbols"] {
+        font-family: "Material Symbols Rounded", "Material Symbols Outlined", "Material Icons" !important;
+        font-feature-settings: "liga";
+    }
 
     .block-container {
         max-width: 1240px;
@@ -198,9 +206,7 @@ st.markdown("""
     [data-testid="stSidebar"] label {
         color: #1f2937 !important;
     }
-    [data-testid="stSidebar"] [data-testid="stExpander"] summary,
-    [data-testid="stSidebar"] [data-testid="stExpander"] summary p,
-    [data-testid="stSidebar"] [data-testid="stExpander"] summary span {
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary {
         color: #1f2937 !important;
         opacity: 1 !important;
     }
