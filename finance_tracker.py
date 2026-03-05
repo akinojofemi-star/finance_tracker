@@ -36,32 +36,100 @@ st.set_page_config(
 # --- Modern UI/UX CSS ---
 st.markdown("""
 <style>
-    .stApp { background-color: #F4F6F9; }
-    h1, h2, h3 { color: #1E293B !important; font-family: 'Inter', sans-serif; }
+    /* Global Theme */
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+    
+    .stApp { 
+        background-color: #F8FAFC; 
+        background-image: radial-gradient(at 0% 0%, hsla(253,16%,7%,0.03) 0, transparent 50%), radial-gradient(at 50% 0%, hsla(225,39%,30%,0.03) 0, transparent 50%), radial-gradient(at 100% 0%, hsla(339,49%,30%,0.03) 0, transparent 50%);
+    }
+    
+    h1, h2, h3, h4, h5, h6, p, span, div { 
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important; 
+    }
+    
+    h1, h2, h3 { color: #0F172A !important; letter-spacing: -0.03em; font-weight: 800; }
+    
+    /* Layout Adjustments */
+    .block-container { padding-top: 2rem !important; max-width: 1280px; }
+    
+    /* Premium KPI Cards */
     .kpi-card {
-        background-color: white; border-radius: 12px;
-        padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-        margin-bottom: 20px;
-        border-top: 4px solid #E2E8F0;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 20px;
+        padding: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        margin-bottom: 24px;
+        transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
     }
-    .kpi-title { color: #64748B; font-size: 0.9rem; text-transform: uppercase; font-weight: 600; margin-bottom: 8px;}
-    .kpi-val { color: #0F172A; font-size: 1.8rem; font-weight: 700; }
+    .kpi-card:hover {
+        transform: translateY(-4px) scale(1.02);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(255, 255, 255, 0.9);
+    }
+    .kpi-title { color: #64748B; font-size: 0.85rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 8px;}
+    .kpi-val { color: #0F172A; font-size: 2.2rem; font-weight: 800; line-height: 1.2; text-shadow: 0 2px 4px rgba(0,0,0,0.02); }
     
-    /* Dynamic border colors */
-    .border-green { border-top-color: #10B981 !important; }
-    .border-red { border-top-color: #EF4444 !important; }
-    .border-blue { border-top-color: #3B82F6 !important; }
-    .border-purple { border-top-color: #8B5CF6 !important; }
+    /* Dynamic Indicator Highlights */
+    .indicator-green { border-left: 5px solid #10B981; }
+    .indicator-red { border-left: 5px solid #EF4444; }
+    .indicator-blue { border-left: 5px solid #3B82F6; }
+    .indicator-purple { border-left: 5px solid #8B5CF6; }
 
-    /* Button styling */
+    /* Button Polish */
     .stButton>button {
-        border-radius: 8px; font-weight: 500;
-        transition: all 0.2s ease;
+        border-radius: 12px; font-weight: 600;
+        border: 1px solid rgba(226, 232, 240, 0.8);
+        background: linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%);
+        color: #334155;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        padding: 0.6rem 1.2rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
     }
-    .stButton>button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .stButton>button:hover { 
+        border-color: #CBD5E1;
+        background: #FFFFFF;
+        color: #0F172A;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px -2px rgba(0,0,0,0.08); 
+    }
     
-    /* Table font */
-    [data-testid="stDataFrame"] { font-size: 14px; }
+    /* Premium Empty State */
+    .onboarding-hero {
+        text-align: center;
+        padding: 4rem 2rem 2rem 2rem;
+        margin-bottom: 2rem;
+        background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.9) 100%);
+        border-radius: 24px;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 10px 30px -5px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(10px);
+    }
+    .onboarding-title { font-size: 2.5rem; font-weight: 800; color: #0F172A; margin-bottom: 1rem; letter-spacing: -0.04em; }
+    .onboarding-subtitle { color: #64748B; font-size: 1.15rem; max-width: 650px; margin: 0 auto; line-height: 1.6; font-weight: 500; }
+    
+    .feature-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 16px;
+        text-align: center;
+        height: 100%;
+        border: 1px solid #E2E8F0;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);
+        transition: transform 0.3s ease;
+    }
+    .feature-card:hover { transform: translateY(-5px); box-shadow: 0 12px 20px -5px rgba(0,0,0,0.05); }
+    .feature-icon { font-size: 3rem; margin-bottom: 1rem; display: inline-block; background: #EEF2FF; width: 80px; height: 80px; line-height: 80px; border-radius: 50%; color: #4F46E5; }
+    .feature-title { font-size: 1.25rem; font-weight: 700; color: #1E293B; margin-bottom: 0.5rem; }
+    .feature-desc { color: #64748B; font-size: 0.95rem; line-height: 1.5; }
+    
+    /* Table & UI Polish */
+    [data-testid="stDataFrame"] { font-size: 14px; border-radius: 16px; overflow: hidden; border: 1px solid #E2E8F0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); }
+    [data-testid="stSidebar"] { background-color: white !important; border-right: 1px solid #E2E8F0; }
+    .stProgress .st-bo { background-color: #10B981; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -112,7 +180,8 @@ def generate_sample_data():
 
 def init_session_state():
     if 'transactions' not in st.session_state:
-        st.session_state.transactions = generate_sample_data()
+        # Initialize an empty dataframe with correct columns instead of sample data
+        st.session_state.transactions = pd.DataFrame(columns=['Date', 'Description', 'Category', 'Amount', 'Payment_Method'])
     if 'budgets' not in st.session_state:
         # Default monthly budgets (amount in NGN)
         st.session_state.budgets = {
@@ -169,11 +238,15 @@ def main():
     # Header
     current_month_str = datetime.now().strftime('%B %Y')
     st.markdown(f"""
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px;">
-            <h1 style="margin:0;">💰 Personal Finance Dashboard</h1>
-            <span style="color: #64748B; font-weight: 500;">Current period: {current_month_str}</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <div>
+                <h1 style="margin:0; font-size: 2.2rem; font-weight: 800; letter-spacing: -0.03em;">Finance Tracker</h1>
+                <p style="margin: 0; color: #64748B; font-size: 1rem; margin-top: 4px;">Smart insights for your personal wealth</p>
+            </div>
+            <div style="background: white; padding: 8px 16px; border-radius: 20px; border: 1px solid #E2E8F0; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <span style="color: #64748B; font-size: 0.9rem; font-weight: 600;">Current Period: <span style="color: #0F172A;">{current_month_str}</span></span>
+            </div>
         </div>
-        <hr style="margin-top: 0;">
     """, unsafe_allow_html=True)
 
     # --- Sidebar ---
@@ -232,7 +305,11 @@ def main():
         st.subheader("📅 Filters")
         df = st.session_state.transactions.copy()
         
-        min_date, max_date = df['Date'].min().date(), df['Date'].max().date()
+        if df.empty:
+            min_date, max_date = date.today(), date.today()
+        else:
+            min_date, max_date = df['Date'].min().date(), df['Date'].max().date()
+            
         date_range = st.date_input("Date Range", [min_date, max_date])
         
         cats_filter = st.multiselect("Categories", CATEGORIES, default=CATEGORIES)
@@ -248,8 +325,47 @@ def main():
     if "Income" not in txn_types: df = df[df['Amount'] < 0]
     if "Expense" not in txn_types: df = df[df['Amount'] >= 0]
     
+    # --- Empty State Check / Onboarding Flow ---
     if df.empty:
-        st.warning("No transactions match the selected filters.")
+        st.markdown("""
+            <div class="onboarding-hero">
+                <div class="onboarding-title">Take Control of Your Wealth 🚀</div>
+                <div class="onboarding-subtitle">Your personal finance dashboard is ready. Stop guessing where your money goes and start building towards your financial goals with powerful, automated insights.</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("""
+                <div class="feature-card">
+                    <div class="feature-icon">📁</div>
+                    <div class="feature-title">1. Import Data</div>
+                    <div class="feature-desc">Use the sidebar to upload a CSV spreadsheet, or manually log your first transaction to get started immediately.</div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+        with col2:
+            st.markdown("""
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <div class="feature-title">2. See Where You Stand</div>
+                    <div class="feature-desc">We instantly calculate your net cash flow, income-spent ratio, and categorize your expenses beautifully.</div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+        with col3:
+            st.markdown("""
+                <div class="feature-card">
+                    <div class="feature-icon">📈</div>
+                    <div class="feature-title">3. Hit Your Goals</div>
+                    <div class="feature-desc">Monitor your monthly budgets in real-time and track progress against your emergency funds or savings goals.</div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+        st.markdown("<br><hr><br>", unsafe_allow_html=True)
+        st.info("💡 **Pro Tip**: To test the dashboard quickly, upload the `sample_test_data.csv` file located in the project folder!")
         st.stop()
         
     income_val = df[df['Amount'] > 0]['Amount'].sum()
@@ -259,17 +375,17 @@ def main():
     # --- KPI Row ---
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.markdown(f'<div class="kpi-card border-green"><div class="kpi-title">Total Income</div><div class="kpi-val" style="color:#10B981;">₦ {income_val:,.0f}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-card indicator-green"><div class="kpi-title">Total Income</div><div class="kpi-val" style="color:#10B981;">₦ {income_val:,.0f}</div></div>', unsafe_allow_html=True)
     with col2:
-        st.markdown(f'<div class="kpi-card border-red"><div class="kpi-title">Total Expenses</div><div class="kpi-val" style="color:#EF4444;">₦ {abs(expense_val):,.0f}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-card indicator-red"><div class="kpi-title">Total Expenses</div><div class="kpi-val" style="color:#EF4444;">₦ {abs(expense_val):,.0f}</div></div>', unsafe_allow_html=True)
     with col3:
         n_color = "#3B82F6" if net_val >= 0 else "#EF4444"
-        st.markdown(f'<div class="kpi-card border-blue"><div class="kpi-title">Net Savings</div><div class="kpi-val" style="color:{n_color};">₦ {net_val:,.0f}</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-card indicator-blue"><div class="kpi-title">Net Savings</div><div class="kpi-val" style="color:{n_color};">₦ {net_val:,.0f}</div></div>', unsafe_allow_html=True)
     with col4:
         # Simple health check calculation
         ratio = abs(expense_val) / income_val if income_val > 0 else 0
         h_color = "#10B981" if ratio <= 0.50 else ("#F59E0B" if ratio <= 0.8 else "#EF4444")
-        st.markdown(f'<div class="kpi-card border-purple"><div class="kpi-title">Income Spent Ratio</div><div class="kpi-val" style="color:{h_color};">{ratio*100:.1f}%</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-card indicator-purple"><div class="kpi-title">Income Spent Ratio</div><div class="kpi-val" style="color:{h_color};">{ratio*100:.1f}%</div></div>', unsafe_allow_html=True)
 
     # --- Charts & Analysis ---
     st.markdown("### 📊 Cash Flow & Spending Analysis")
@@ -283,7 +399,17 @@ def main():
         fig1 = px.bar(flow, x='Date', y='Amount', title='Weekly Net Cash Flow',
                       color='Amount', color_continuous_scale=[(0, '#EF4444'), (1, '#10B981')],
                       color_continuous_midpoint=0)
-        fig1.update_layout(margin=dict(l=0, r=0, t=30, b=0), plot_bgcolor='rgba(0,0,0,0)', coloraxis_showscale=False)
+        
+        fig1.update_layout(
+            margin=dict(l=20, r=20, t=50, b=20), 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            paper_bgcolor='rgba(0,0,0,0)',
+            coloraxis_showscale=False,
+            font=dict(family="Plus Jakarta Sans, sans-serif", color="#475569"),
+            title=dict(font=dict(size=18, color="#0F172A", weight="bold")),
+            xaxis=dict(showgrid=False, linecolor="#E2E8F0"),
+            yaxis=dict(showgrid=True, gridcolor="#F1F5F9", linecolor="rgba(0,0,0,0)")
+        )
         st.plotly_chart(fig1, use_container_width=True)
 
     with c2:
@@ -291,10 +417,26 @@ def main():
         expenses_only = df[df['Amount'] < 0].copy()
         if not expenses_only.empty:
             expenses_only['Abs_Amount'] = expenses_only['Amount'].abs()
-            fig2 = px.pie(expenses_only, values='Abs_Amount', names='Category', hole=0.5,
-                          title='Expense Breakdown', color_discrete_sequence=px.colors.qualitative.Pastel)
-            fig2.update_traces(textposition='inside', textinfo='percent')
-            fig2.update_layout(margin=dict(l=0, r=0, t=30, b=0), showlegend=False)
+            fig2 = px.pie(expenses_only, values='Abs_Amount', names='Category', hole=0.6,
+                          title='Expense Breakdown', 
+                          color_discrete_sequence=['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4'])
+            
+            fig2.update_traces(
+                textposition='inside', 
+                textinfo='percent',
+                hoverinfo='label+percent',
+                marker=dict(line=dict(color='#ffffff', width=2))
+            )
+            
+            fig2.update_layout(
+                margin=dict(l=20, r=20, t=50, b=20), 
+                showlegend=False,
+                plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(family="Plus Jakarta Sans, sans-serif", color="#475569"),
+                title=dict(font=dict(size=18, color="#0F172A", weight="bold")),
+                annotations=[dict(text='Expenses', x=0.5, y=0.5, font_size=16, showarrow=False, font_color="#64748B")]
+            )
             st.plotly_chart(fig2, use_container_width=True)
         else:
             st.info("No expense data to chart.")
